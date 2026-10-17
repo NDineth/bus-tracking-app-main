@@ -23,14 +23,14 @@ Web development origins allowed by the backend default to `http://localhost:8081
 - **Overview:** fleet and availability summaries, bus/route/driver search, fleet filters, 30-day financial breakdowns, recent notifications and the latest scored alert.
 - **Drivers:** assigned bus, start/stop driving, today's running schedule, three-day agenda, daily net report, bus browsing and approval requests.
 - **Owners:** owned fleet, schedule and agenda links, financial reports, emergency/schedule requests and request history.
-- **Alerts:** the 20 most recent notifications, unread and severity filters, search, newest/priority sorting, expandable event details, score bars and individual/bulk read acknowledgement.
+- **Alerts:** the 20 most recent notifications shown by alert type first; tap one for a scrollable extended view with time, severity, message, event details, score bars and individual read acknowledgement. Unread and severity filters, search, newest/priority sorting and bulk read acknowledgement remain available.
 - **Settings:** account sign-out, current policy, an interactive score preview and administrator policy editing. Other roles have read-only threshold access.
 
 Schedules and request history include summary counts. Data failures are shown with retry controls where available. A read acknowledgement does not resolve a safety incident. Notifications poll every 30 seconds while the app is active; this implementation does not add operating-system push notifications.
 
 ## Safety score policy
 
-Braking notifications show severity text and guidance in the preview. Tap a notification to expand a scrollable details area with its numeric X value, event count (when provided), safety score and other event data. Braking severity is independent of the overall alert/safety-score severity.
+Braking notifications initially show only the alert type. Tap one to expand a scrollable details area with braking severity, guidance, numeric X value, event count (when provided), safety score and other event data. Braking severity is independent of the overall alert/safety-score severity.
 
 | Braking X | Braking severity |
 | --- | --- |
@@ -40,7 +40,7 @@ Braking notifications show severity text and guidance in the preview. Tap a noti
 | `-7 <= X <= -5` | Severe |
 | `X < -7` | Critical |
 
-Shared boundaries enter the stronger band, except -7 remains Severe because Critical is strictly below -7. The frontend can read explicit `brakingValueX`, `brakingX`, `accelerationX`, `acceleration.x` or `x` fields on a braking notification, or an explicitly labeled X value in its message. Older notifications that supply only a harsh-braking count cannot be classified by X: the preview says severity is unavailable, and expanded details show the count and mark X as not provided. The backend has not been changed to add readings.
+Shared boundaries enter the stronger band, except -7 remains Severe because Critical is strictly below -7. The frontend can read explicit `brakingValueX`, `brakingX`, `accelerationX`, `acceleration.x` or `x` fields on a braking notification, or an explicitly labeled X value in its message. Older notifications that supply only a harsh-braking count cannot be classified by X: expanded details show severity as unavailable, the count and X as not provided. The backend has not been changed to add readings.
 
 Higher scores mean safer driving. The default bands are:
 
