@@ -5,9 +5,10 @@ import { useBus } from '../context/BusContext';
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import BusDetailsModal from '../components/BusDetailsModal';
+import { ErrorNotice } from '../components/UI';
 
 export default function AllowedBusesScreen() {
-  const { allBuses, fetchAllBuses, isLoading } = useBus();
+  const { allBuses, fetchAllBuses, isLoading, busesError } = useBus();
   const [selectedBus, setSelectedBus] = useState(null);
   const [modalVisible, setModalVisible] = useState(false);
   const router = useRouter();
@@ -86,9 +87,12 @@ export default function AllowedBusesScreen() {
           renderItem={renderItem}
           keyExtractor={(item) => (item.id || item.busId).toString()}
           contentContainerStyle={styles.listContent}
+          refreshing={isLoading}
+          onRefresh={fetchAllBuses}
+          ListHeaderComponent={<ErrorNotice message={busesError} onRetry={fetchAllBuses} />}
           ListEmptyComponent={
             <View style={styles.centerContainer}>
-              <Text style={styles.emptyText}>No allowed buses found.</Text>
+              <Text style={styles.emptyText}>{busesError ? 'Bus information could not be loaded.' : 'No buses are assigned to your account yet.'}</Text>
             </View>
           }
         />

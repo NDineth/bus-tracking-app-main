@@ -22,7 +22,6 @@ export default function RegisterScreen() {
   const router = useRouter();
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [formError, setFormError] = useState(null);
-  const [registered, setRegistered] = useState(false);
 
   const handleRegister = async () => {
     if (isSubmitting) return;
@@ -42,7 +41,7 @@ export default function RegisterScreen() {
       try {
         setIsSubmitting(true);
         await register(firstName.trim(), lastName.trim(), contactNumber.trim(), email.trim(), password, role, licenseNumber.trim());
-        setRegistered(true);
+        router.replace({ pathname: '/login', params: { registered: '1', email: email.trim() } });
       } catch (error) {
         setFormError(errorMessage(error));
       } finally {
@@ -68,7 +67,6 @@ export default function RegisterScreen() {
         <Text style={styles.title}>Create Account</Text>
         <Text style={styles.subtitle}>Sign up to get started</Text>
         <ErrorNotice message={formError} />
-        {registered && <View style={{ padding: 20, backgroundColor: Colors.primaryLight, borderRadius: 16, marginBottom: 20 }}><Text style={{ color: Colors.primary, marginBottom: 12 }}>Account created. You can now sign in.</Text><Button title="Continue to sign in" onPress={() => router.replace('/login')} /></View>}
 
         <View style={styles.row}>
           <TextInput
@@ -179,7 +177,7 @@ export default function RegisterScreen() {
           />
         )}
 
-        <Button title="Create account" onPress={handleRegister} loading={isSubmitting} disabled={registered} />
+        <Button title="Create account" onPress={handleRegister} loading={isSubmitting} />
 
         <View style={styles.footer}>
           <Text style={styles.footerText}>Already have an account? </Text>

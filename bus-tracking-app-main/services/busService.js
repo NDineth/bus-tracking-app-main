@@ -36,7 +36,10 @@ export const getAllBuses = async () => {
   try {
     const response = await API.get('/buses');
     
-    return response.data.map(bus => {
+    const data = response.data;
+    const buses = Array.isArray(data) ? data : data?.content;
+    if (!Array.isArray(buses)) throw new Error('The server returned an unexpected bus list. Check the backend API address.');
+    return buses.map(bus => {
       const assignedDriver = bus.driver
         ? `${bus.driver.firstName} ${bus.driver.lastName}`
         : 'None';
@@ -60,7 +63,7 @@ export const getAllBuses = async () => {
       };
     });
   } catch (error) {
-    throw error.response?.data?.message || 'Failed to fetch buses';
+    throw error;
   }
 };
 

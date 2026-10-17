@@ -111,7 +111,7 @@ const BusCard = ({ bus, isDriving, onToggleDriving, isLoading }) => {
 
   if (!bus) return (
     <View style={styles.emptyContainer}>
-      <Text style={styles.emptyText}>No bus assigned to you yet.</Text>
+      <Text style={styles.emptyText}>No bus is assigned to your account yet. Your administrator can assign one when you are ready to drive.</Text>
     </View>
   );
 

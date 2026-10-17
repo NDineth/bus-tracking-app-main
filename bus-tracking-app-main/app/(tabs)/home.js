@@ -20,7 +20,7 @@ const isUnavailable = bus => bus.status === 'UNAVAILABLE' || bus.availabilitySta
 
 export default function HomeScreen() {
   const { user } = useAuth();
-  const { currentBus, isDriving, toggleDriving, refreshBus, isLoading: driverLoading } = useBus();
+  const { currentBus, isDriving, toggleDriving, refreshBus, assignedBusError, isLoading: driverLoading } = useBus();
   const { notifications, unreadCount, refreshNotifications, markNotificationRead, error: notificationError, lastUpdated } = useNotifications();
   const { policy, loaded: policyLoaded, error: policyError } = useAlertPolicy();
   const router = useRouter();
@@ -115,7 +115,8 @@ export default function HomeScreen() {
     <View style={[styles.columns, wide && { flexDirection: 'row', alignItems: 'flex-start' }]}>
       <View style={{ flex: wide ? 2 : undefined, gap: 20 }}>
         {driver ? <View><SectionTitle title="Your assigned bus" subtitle="Manage your run and see what comes next" action="Browse buses" onPress={() => router.push('/allowed-buses')} />
-          {driverLoading && !currentBus ? <ActivityIndicator color={Colors.primary} /> : <BusCard bus={currentBus} isDriving={isDriving} onToggleDriving={toggleDriving} isLoading={driverLoading} />}</View>
+          <ErrorNotice message={assignedBusError} onRetry={refreshBus} />
+          {driverLoading && !currentBus ? <ActivityIndicator color={Colors.primary} /> : !currentBus && assignedBusError ? null : <BusCard bus={currentBus} isDriving={isDriving} onToggleDriving={toggleDriving} isLoading={driverLoading} />}</View>
           : <View>
             <SectionTitle title="Fleet workspace" subtitle="Schedules, availability and reports" />
             {canFinance && <View style={[styles.chips, { marginBottom: 16 }]}>{[['fleet', 'Your fleet', 'bus-outline'], ['reports', 'Financial reports', 'stats-chart-outline']].map(([id, label, icon]) =>
