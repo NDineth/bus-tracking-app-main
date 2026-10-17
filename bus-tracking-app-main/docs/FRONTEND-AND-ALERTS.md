@@ -2,13 +2,17 @@
 
 ## Run locally
 
-Use Node 22 or later. In `bus-tracking-app-main`:
+Use Node 22.13 or later. This project targets Expo SDK 57, matching the SDK 57 Expo Go app. In `bus-tracking-app-main`:
 
 ```powershell
 npm ci
 Copy-Item .env.example .env
 npm run web
 ```
+
+For Expo Go on your phone, run `npx expo start --clear` from this same frontend directory, keep the phone and computer on the same network, and scan the new QR code. Stop any SDK 54 development server first; an older QR code can still open the old project session. Expo Go and the project's Expo SDK major versions must match.
+
+After SDK dependency changes, run `npm ci` on any other computer using this checkout. Do not change only an `sdkVersion` label in app configuration: the installed Expo, React Native and Expo module versions determine compatibility.
 
 Set `EXPO_PUBLIC_API_URL` in `.env` to the backend URL ending in `/api`. For a physical phone, use the computer's LAN address instead of `localhost`. Restart Expo after changing this value. The existing LAN URL remains the fallback when the environment variable is absent.
 
