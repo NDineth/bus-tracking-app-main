@@ -1,4 +1,4 @@
-const IP_ADDRESS = '192.168.8.191';
+const IP_ADDRESS = '172.20.10.2';
 const PORT = '8080';
 
 export default {
