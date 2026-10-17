@@ -1,8 +1,10 @@
 import React, { createContext, useState, useContext, useEffect, useCallback, useRef } from 'react';
 import { useAuth } from './AuthContext';
-import { getAssignedBusByDriverId, updateBusStatus, getAllBuses, startAssignment, completeAssignment } from '../services/busService';
+import { updateBusStatus, getAllBuses, startAssignment, completeAssignment } from '../services/busService';
 import * as SecureStore from '../utils/storage';
 import { showError } from '../utils/alertService';
+import { errorMessage } from '../services/api';
+import { loadAssignedBus } from '../utils/busAssignment';
 
 
 const BusContext = createContext();
@@ -15,6 +17,8 @@ export const BusProvider = ({ children }) => {
   const [allBuses, setAllBuses] = useState([]);
   const [isDriving, setIsDriving] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
+  const [assignedBusError, setAssignedBusError] = useState(null);
+  const [busesError, setBusesError] = useState(null);
   const updating = useRef(false);
   const identity = useRef(user?.id);
   identity.current = user?.id;
@@ -24,33 +28,17 @@ export const BusProvider = ({ children }) => {
     
     setIsLoading(true);
     try {
-      // Check if user has already selected a bus in this session or previously
-      const savedBusId = await SecureStore.getItemAsync(`selectedBusId_${user.id}`);
-      
-      let busData;
-      if (savedBusId) {
-        const buses = await getAllBuses();
-        busData = buses.find(b => (b.id || b.busId).toString() === savedBusId && String(b.driver?.id) === String(user.id));
-      }
-      
-      if (!busData) {
-        busData = await getAssignedBusByDriverId(user.id);
-      }
+      const busData = await loadAssignedBus({ driverId: user.id,
+        fetchBuses: getAllBuses,
+        readSelectedBusId: () => SecureStore.getItemAsync(`selectedBusId_${user.id}`),
+      });
 
       if (identity.current !== user.id) return;
       setCurrentBus(busData);
-      
-      if (busData) {
-        const isCurrentlyDriving = busData.status === 'DRIVING' || busData.driver?.status === 'DRIVING';
-        setIsDriving(isCurrentlyDriving);
-        if (isCurrentlyDriving) {
-          await SecureStore.setItemAsync(`isDriving_${user.id}`, 'true');
-        } else {
-          await SecureStore.setItemAsync(`isDriving_${user.id}`, 'false');
-        }
-      } else setIsDriving(false);
+      setAssignedBusError(null);
+      setIsDriving(busData?.status === 'DRIVING' || busData?.driver?.status === 'DRIVING');
     } catch (error) {
-      if (identity.current === user.id) showError('Bus Service', 'Failed to fetch assigned bus');
+      if (identity.current === user.id) setAssignedBusError(errorMessage(error));
     } finally {
       if (identity.current === user.id) setIsLoading(false);
     }
@@ -61,16 +49,19 @@ export const BusProvider = ({ children }) => {
     setIsLoading(true);
     try {
       const data = await getAllBuses();
+      if (identity.current !== user?.id) return;
       setAllBuses(data);
+      setBusesError(null);
     } catch (error) {
-      showError('Bus Service', 'Failed to fetch all buses');
+      if (identity.current === user?.id) setBusesError(errorMessage(error));
     } finally {
-      setIsLoading(false);
+      if (identity.current === user?.id) setIsLoading(false);
     }
-  }, [user?.role]);
+  }, [user?.id, user?.role]);
 
   useEffect(() => {
     setCurrentBus(null); setAllBuses([]); setIsDriving(false); setIsLoading(false);
+    setAssignedBusError(null); setBusesError(null);
     fetchAssignedBus();
   }, [fetchAssignedBus]);
 
@@ -82,7 +73,6 @@ export const BusProvider = ({ children }) => {
       setCurrentBus(bus);
       setIsDriving(false); // Reset driving state when switching buses
       await SecureStore.setItemAsync(`selectedBusId_${user.id}`, (bus.id || bus.busId).toString());
-      await SecureStore.setItemAsync(`isDriving_${user.id}`, 'false');
     } catch (error) {
       showError('Bus Selection', 'Failed to select bus');
     } finally {
@@ -107,7 +97,6 @@ export const BusProvider = ({ children }) => {
           if (res && (res.status === 'CANCELLED' || res.status === 'TURN_LOSS')) {
             await updateBusStatus(currentBus.id || currentBus.busId, 'IDLE', user.id);
             setIsDriving(false);
-            await SecureStore.setItemAsync(`isDriving_${user.id}`, 'false');
             showError('Turn Loss', 'Your turn has been cancelled due to a delay exceeding 30 minutes.');
             await fetchAssignedBus();
             return;
@@ -118,14 +107,13 @@ export const BusProvider = ({ children }) => {
       }
 
       setIsDriving(newDrivingState);
-      await SecureStore.setItemAsync(`isDriving_${user.id}`, newDrivingState.toString());
       
       // Refresh the bus state to fetch updated schedules
       await fetchAssignedBus();
     } catch (error) {
       try { await updateBusStatus(currentBus.id || currentBus.busId, isDriving ? 'DRIVING' : 'IDLE', user.id); } catch (_) { /* Reconcile on refresh. */ }
       await fetchAssignedBus();
-      showError('Bus Status', 'Failed to update driving status');
+      showError('Bus Status', errorMessage(error));
     } finally {
       updating.current = false;
       setIsLoading(false);
@@ -138,6 +126,8 @@ export const BusProvider = ({ children }) => {
       allBuses,
       isDriving, 
       isLoading, 
+      assignedBusError,
+      busesError,
       refreshBus: fetchAssignedBus,
       fetchAllBuses,
       selectBus,

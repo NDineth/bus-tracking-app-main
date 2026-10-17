@@ -5,7 +5,7 @@ export const loginUser = async (email, password) => {
     const response = await API.post('/auth/sign-in', { email, password });
     return response.data;
   } catch (error) {
-    throw error.response?.data?.message || 'Login failed';
+    throw error;
   }
 };
 
@@ -14,7 +14,7 @@ export const registerUser = async (userData) => {
     const response = await API.post('/auth/signup', userData);
     return response.data;
   } catch (error) {
-    throw error.response?.data?.message || 'Registration failed';
+    throw error;
   }
 };
 

@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { View, Text, TextInput, TouchableOpacity, StyleSheet, KeyboardAvoidingView, Platform, ScrollView, useWindowDimensions } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { Link } from 'expo-router';
+import { Link, useLocalSearchParams } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { useAuth } from '../context/AuthContext';
 import { Button, ErrorNotice, ui } from '../components/UI';
@@ -9,7 +9,8 @@ import { errorMessage } from '../services/api';
 import Colors from '../constants/Colors';
 
 export default function LoginScreen() {
-  const [email, setEmail] = useState('');
+  const params = useLocalSearchParams();
+  const [email, setEmail] = useState(typeof params.email === 'string' ? params.email : '');
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -37,6 +38,7 @@ export default function LoginScreen() {
         <View style={[styles.form, wide && { flex: 1 }]}>
           <Text style={ui.eyebrow}>YOUR OPERATIONS WORKSPACE</Text><Text style={styles.title}>Welcome back.</Text><Text style={[ui.subtitle, { marginBottom: 26 }]}>Sign in to get your day moving.</Text>
           <ErrorNotice message={error} />
+          {params.registered === '1' && <View accessibilityRole="alert" style={{ padding: 14, borderRadius: 12, backgroundColor: Colors.primaryLight }}><Text style={{ color: Colors.primary, lineHeight: 21 }}>Account created successfully. Sign in to continue.</Text></View>}
           <Text style={styles.label}>Email address</Text><TextInput accessibilityLabel="Email address" style={ui.input} placeholder="you@example.com" placeholderTextColor={Colors.muted} value={email} onChangeText={setEmail} keyboardType="email-address" autoCapitalize="none" autoCorrect={false} autoComplete="email" editable={!busy} />
           <Text style={styles.label}>Password</Text><View style={styles.password}><TextInput accessibilityLabel="Password" style={styles.passwordInput} placeholder="Enter your password" placeholderTextColor={Colors.muted} value={password} onChangeText={setPassword} secureTextEntry={!showPassword} autoComplete="current-password" editable={!busy} onSubmitEditing={submit} />
             <TouchableOpacity accessibilityRole="button" accessibilityLabel={showPassword ? 'Hide password' : 'Show password'} onPress={() => setShowPassword(!showPassword)} style={styles.eye}><Ionicons name={showPassword ? 'eye-off-outline' : 'eye-outline'} size={21} color={Colors.textSecondary} /></TouchableOpacity></View>

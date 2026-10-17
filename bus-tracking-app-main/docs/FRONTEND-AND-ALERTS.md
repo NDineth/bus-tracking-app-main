@@ -2,7 +2,7 @@
 
 ## Run locally
 
-Use Node 22 or later. In `bus-tracking-app-main`:
+Use Node 22.13 or later and Expo Go for SDK 57. In `bus-tracking-app-main`:
 
 ```powershell
 npm ci
@@ -10,7 +10,9 @@ Copy-Item .env.example .env
 npm run web
 ```
 
-Set `EXPO_PUBLIC_API_URL` in `.env` to the backend URL ending in `/api`. For a physical phone, use the computer's LAN address instead of `localhost`. Restart Expo after changing this value. The existing LAN URL remains the fallback when the environment variable is absent.
+Set `EXPO_PUBLIC_API_URL` in `.env` to the backend URL ending in `/api`. The backend runs on a separate machine at `http://172.20.10.2:8080/api`; this is also the frontend fallback when the environment variable is absent. For a physical phone, use the backend machine's reachable LAN address. `localhost` on the phone refers to the phone itself. Restart Expo with `npx expo start --clear` after changing this value.
+
+Registration returns directly to the login screen after a successful response, with a confirmation message and the registered email filled in. No page refresh is needed. A new driver with no bus assigned sees a normal empty state. Server failures appear inline with retry controls and identify connection, permission or missing endpoint errors.
 
 Start the updated Spring Boot backend with your configured PostgreSQL database. The existing `ddl-auto: update` setting creates the `alert_policy` table and adds nullable `safety_score` and `severity` notification columns. Review schema changes using your usual deployment process before production rollout.
 

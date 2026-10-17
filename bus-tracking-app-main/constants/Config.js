@@ -1,7 +1,9 @@
-const IP_ADDRESS = '192.168.8.191';
-const PORT = '8080';
+import { resolveApiBaseUrl } from '../utils/connection';
+
+const IP_ADDRESS = '172.20.10.2';
+const API_BASE_URL = resolveApiBaseUrl(process.env.EXPO_PUBLIC_API_URL, `http://${IP_ADDRESS}:8080/api`);
 
 export default {
-  API_BASE_URL: process.env.EXPO_PUBLIC_API_URL || `http://${IP_ADDRESS}:${PORT}/api`,
+  API_BASE_URL,
   IP_ADDRESS,
 };
