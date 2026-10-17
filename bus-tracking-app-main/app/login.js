@@ -1,156 +1,56 @@
 import React, { useState } from 'react';
-import { View, Text, TextInput, TouchableOpacity, StyleSheet, KeyboardAvoidingView, Platform } from 'react-native';
+import { View, Text, TextInput, TouchableOpacity, StyleSheet, KeyboardAvoidingView, Platform, ScrollView, useWindowDimensions } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { Link } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { useAuth } from '../context/AuthContext';
+import { Button, ErrorNotice, ui } from '../components/UI';
+import { errorMessage } from '../services/api';
 import Colors from '../constants/Colors';
 
 export default function LoginScreen() {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState(null);
   const { login } = useAuth();
-
-  const handleLogin = async () => {
-    if (email && password) {
-      try {
-        await login(email, password);
-      } catch (error) {
-        alert(error);
-      }
+  const wide = useWindowDimensions().width >= 900;
+  const submit = async () => {
+    if (busy) return;
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim()) || !password) {
+      setError('Enter your email address and password to continue.'); return;
     }
+    setError(null); setBusy(true);
+    try { await login(email.trim(), password); }
+    catch (e) { setError(errorMessage(e)); }
+    finally { setBusy(false); }
   };
-
-  return (
-    <KeyboardAvoidingView 
-      style={styles.container} 
-      behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-    >
-      <View style={styles.formContainer}>
-        <Text style={styles.title}>Welcome Back</Text>
-        <Text style={styles.subtitle}>Sign in to track your bus</Text>
-
-        <TextInput
-          style={styles.input}
-          placeholder="Email address"
-          placeholderTextColor="#999"
-          value={email}
-          onChangeText={setEmail}
-          keyboardType="email-address"
-          autoCapitalize="none"
-        />
-
-        <View style={styles.passwordContainer}>
-          <TextInput
-            style={styles.passwordInput}
-            placeholder="Password"
-            placeholderTextColor="#999"
-            value={password}
-            onChangeText={setPassword}
-            secureTextEntry={!showPassword}
-          />
-          <TouchableOpacity 
-            style={styles.eyeIcon} 
-            onPress={() => setShowPassword(!showPassword)}
-          >
-            <Ionicons 
-              name={showPassword ? "eye-off-outline" : "eye-outline"} 
-              size={20} 
-              color="#666" 
-            />
-          </TouchableOpacity>
+  return <SafeAreaView style={ui.page}><KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
+    <ScrollView contentContainerStyle={styles.scroll} keyboardShouldPersistTaps="handled">
+      <View style={[styles.shell, wide && { flexDirection: 'row' }]}>
+        <View style={[styles.brand, wide && { flex: 1, minHeight: 570 }]}>
+          <View style={styles.wordmark}><View style={styles.logo}><Ionicons name="bus" size={24} color={Colors.navy} /></View><Text style={styles.brandName}>BUS TRACK PRO</Text></View>
+          <View style={{ marginTop: wide ? 70 : 30 }}><Text style={styles.brandEyebrow}>A BETTER WAY FORWARD</Text><Text style={styles.brandTitle}>Connected journeys.{`\n`}Confident decisions.</Text><Text style={styles.brandDescription}>A single place for your fleet, schedules, earnings and driving safety.</Text></View>
+          {wide && <View style={styles.features}>{[['navigate-outline', 'Know your next move', 'Your schedule and agenda, always close.'], ['shield-checkmark-outline', 'Keep safety in sight', 'Clear alerts and meaningful safety scores.'], ['stats-chart-outline', 'Make every trip count', 'Understand fees, commissions and daily totals.']].map(([icon, title, description]) => <View key={title} style={styles.feature}><Ionicons name={icon} size={23} color="#B4D6C9" /><View style={{ flex: 1 }}><Text style={styles.featureTitle}>{title}</Text><Text style={styles.featureDescription}>{description}</Text></View></View>)}</View>}
         </View>
-
-        <TouchableOpacity style={styles.button} onPress={handleLogin}>
-          <Text style={styles.buttonText}>Sign In</Text>
-        </TouchableOpacity>
-
-        <View style={styles.footer}>
-          <Text style={styles.footerText}>Don't have an account? </Text>
-          <Link href="/register" asChild>
-            <TouchableOpacity>
-              <Text style={styles.linkText}>Register here</Text>
-            </TouchableOpacity>
-          </Link>
+        <View style={[styles.form, wide && { flex: 1 }]}>
+          <Text style={ui.eyebrow}>YOUR OPERATIONS WORKSPACE</Text><Text style={styles.title}>Welcome back.</Text><Text style={[ui.subtitle, { marginBottom: 26 }]}>Sign in to get your day moving.</Text>
+          <ErrorNotice message={error} />
+          <Text style={styles.label}>Email address</Text><TextInput accessibilityLabel="Email address" style={ui.input} placeholder="you@example.com" placeholderTextColor={Colors.muted} value={email} onChangeText={setEmail} keyboardType="email-address" autoCapitalize="none" autoCorrect={false} autoComplete="email" editable={!busy} />
+          <Text style={styles.label}>Password</Text><View style={styles.password}><TextInput accessibilityLabel="Password" style={styles.passwordInput} placeholder="Enter your password" placeholderTextColor={Colors.muted} value={password} onChangeText={setPassword} secureTextEntry={!showPassword} autoComplete="current-password" editable={!busy} onSubmitEditing={submit} />
+            <TouchableOpacity accessibilityRole="button" accessibilityLabel={showPassword ? 'Hide password' : 'Show password'} onPress={() => setShowPassword(!showPassword)} style={styles.eye}><Ionicons name={showPassword ? 'eye-off-outline' : 'eye-outline'} size={21} color={Colors.textSecondary} /></TouchableOpacity></View>
+          <Button title={busy ? 'Signing in…' : 'Sign in'} icon="arrow-forward" onPress={submit} loading={busy} style={{ marginTop: 26 }} />
+          <View style={styles.footer}><Text style={ui.subtitle}>New to Bus Track Pro?</Text><Link href="/register" style={styles.link}>Create an account</Link></View>
+          <View style={styles.hint}><Ionicons name="lock-closed-outline" size={14} color={Colors.textSecondary} /><Text style={styles.hintText}>Your workspace is tailored to your account role.</Text></View>
         </View>
       </View>
-    </KeyboardAvoidingView>
-  );
+    </ScrollView>
+  </KeyboardAvoidingView></SafeAreaView>;
 }
-
-const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: Colors.background,
-  },
-  formContainer: {
-    flex: 1,
-    justifyContent: 'center',
-    paddingHorizontal: 30,
-  },
-  title: {
-    fontSize: 32,
-    fontWeight: 'bold',
-    color: Colors.text,
-    marginBottom: 8,
-  },
-  subtitle: {
-    fontSize: 16,
-    color: Colors.textSecondary,
-    marginBottom: 40,
-  },
-  input: {
-    backgroundColor: Colors.white,
-    borderRadius: 8,
-    paddingVertical: 15,
-    paddingHorizontal: 20,
-    fontSize: 16,
-    marginBottom: 15,
-    borderWidth: 1,
-    borderColor: '#e1e1e1',
-  },
-  passwordContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: Colors.white,
-    borderRadius: 8,
-    borderWidth: 1,
-    borderColor: '#e1e1e1',
-    marginBottom: 15,
-  },
-  passwordInput: {
-    flex: 1,
-    paddingVertical: 15,
-    paddingHorizontal: 20,
-    fontSize: 16,
-  },
-  eyeIcon: {
-    paddingHorizontal: 15,
-  },
-  button: {
-    backgroundColor: Colors.primary,
-    borderRadius: 8,
-    paddingVertical: 15,
-    alignItems: 'center',
-    marginTop: 10,
-  },
-  buttonText: {
-    color: Colors.white,
-    fontSize: 18,
-    fontWeight: 'bold',
-  },
-  footer: {
-    flexDirection: 'row',
-    justifyContent: 'center',
-    marginTop: 30,
-  },
-  footerText: {
-    color: Colors.textSecondary,
-    fontSize: 15,
-  },
-  linkText: {
-    color: Colors.primary,
-    fontSize: 15,
-    fontWeight: 'bold',
-  },
+const styles = StyleSheet.create({ scroll: { flexGrow: 1, justifyContent: 'center', padding: 20 }, shell: { width: '100%', maxWidth: 1050, alignSelf: 'center', backgroundColor: '#FFF', borderRadius: 26, overflow: 'hidden', borderWidth: 1, borderColor: Colors.border },
+  brand: { backgroundColor: Colors.navy, padding: 32 }, wordmark: { flexDirection: 'row', gap: 12, alignItems: 'center' }, logo: { padding: 11, borderRadius: 13, backgroundColor: '#B8D7C9' }, brandName: { color: '#FFF', fontWeight: '800', letterSpacing: 1.3, fontSize: 14 }, brandEyebrow: { color: '#A8CDC0', fontSize: 10, fontWeight: '700', letterSpacing: 2 }, brandTitle: { color: '#FFF', fontSize: 31, lineHeight: 40, fontWeight: '700', letterSpacing: -0.6, marginTop: 16 }, brandDescription: { color: '#B4C9D3', fontSize: 14, lineHeight: 23, marginTop: 16 },
+  features: { gap: 22, marginTop: 45 }, feature: { flexDirection: 'row', gap: 16, alignItems: 'center' }, featureTitle: { color: '#E1EBE8', fontWeight: '600', fontSize: 13 }, featureDescription: { color: '#A1B9C4', fontSize: 11, lineHeight: 19, marginTop: 3 },
+  form: { padding: 30, justifyContent: 'center' }, title: { color: Colors.text, fontSize: 32, letterSpacing: -1, fontWeight: '800', marginTop: 12 }, label: { color: Colors.text, fontSize: 13, fontWeight: '600', marginTop: 20, marginBottom: 9 },
+  password: { flexDirection: 'row', backgroundColor: '#F7F9FA', borderRadius: 12, borderWidth: 1, borderColor: Colors.border }, passwordInput: { flex: 1, padding: 14, minHeight: 48, fontSize: 15, color: Colors.text }, eye: { minWidth: 48, alignItems: 'center', justifyContent: 'center' }, footer: { gap: 4, alignItems: 'center', marginTop: 24 }, link: { color: Colors.primary, fontWeight: '700', fontSize: 13, paddingVertical: 10 }, hint: { flexDirection: 'row', justifyContent: 'center', alignItems: 'center', gap: 6, marginTop: 20 }, hintText: { fontSize: 10, color: Colors.textSecondary, flexShrink: 1 },
 });

@@ -2,6 +2,9 @@ import { Slot, useRouter, useSegments } from 'expo-router';
 import { AuthProvider, useAuth } from '../context/AuthContext';
 import { NotificationProvider } from '../context/NotificationContext';
 import { BusProvider } from '../context/BusContext';
+import { AlertPolicyProvider } from '../context/AlertPolicyContext';
+import { SafeAreaProvider } from 'react-native-safe-area-context';
+import { StatusBar } from 'expo-status-bar';
 import { useEffect } from 'react';
 import { View, ActivityIndicator } from 'react-native';
 
@@ -13,7 +16,6 @@ function InitialLayout() {
   useEffect(() => {
     if (isLoading) return;
 
-    const inAuthGroup = segments[0] === '(tabs)' || segments[0] === 'notifications' || segments[0] === 'allowed-buses' || segments[0] === 'my-requests' || segments[0] === 'new-request';
     const isAuthScreen = segments[0] === 'login' || segments[0] === 'register' || segments[0] === 'index' || !segments[0];
 
     if (!user && !isAuthScreen) {
@@ -23,7 +25,7 @@ function InitialLayout() {
       // Redirect to home if logged in and trying to access auth screens
       router.replace('/(tabs)/home');
     }
-  }, [user, isLoading, segments]);
+  }, [user, isLoading, segments, router]);
 
   if (isLoading) {
     return (
@@ -38,12 +40,17 @@ function InitialLayout() {
 
 export default function RootLayout() {
   return (
-    <AuthProvider>
-      <NotificationProvider>
-        <BusProvider>
-          <InitialLayout />
-        </BusProvider>
-      </NotificationProvider>
-    </AuthProvider>
+    <SafeAreaProvider>
+      <StatusBar style="dark" />
+      <AuthProvider>
+        <AlertPolicyProvider>
+          <NotificationProvider>
+            <BusProvider>
+              <InitialLayout />
+            </BusProvider>
+          </NotificationProvider>
+        </AlertPolicyProvider>
+      </AuthProvider>
+    </SafeAreaProvider>
   );
 }

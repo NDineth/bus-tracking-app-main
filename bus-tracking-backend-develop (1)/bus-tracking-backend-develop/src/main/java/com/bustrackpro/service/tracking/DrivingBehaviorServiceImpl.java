@@ -6,6 +6,7 @@ import com.bustrackpro.modal.NotificationCategory;
 import com.bustrackpro.modal.bus.Bus;
 import com.bustrackpro.modal.tracking.DrivingBehaviorType;
 import com.bustrackpro.modal.tracking.DrivingStatusLog;
+import com.bustrackpro.modal.tracking.AlertPolicy;
 import com.bustrackpro.modal.user.Users;
 import com.bustrackpro.repository.bus.BusRepository;
 import com.bustrackpro.repository.tracking.DrivingStatusLogRepository;
@@ -34,18 +35,10 @@ public class DrivingBehaviorServiceImpl implements DrivingBehaviorService {
     private final BusRepository busRepository;
     private final UserRepository userRepository;
     private final DrivingStatusLogRepository drivingStatusLogRepository;
+    private final AlertPolicyService alertPolicyService;
 
     // Stateful tracking: BusId -> (BehaviorType -> Frequency)
     private final Map<Integer, Map<DrivingBehaviorType, Integer>> eventCounters = new ConcurrentHashMap<>();
-
-    // Thresholds for warning
-    private static final Map<DrivingBehaviorType, Integer> WARNING_THRESHOLDS = Map.of(
-            DrivingBehaviorType.CRASH_DETECTED, 1,
-            DrivingBehaviorType.HIGH_SPEED, 3,
-            DrivingBehaviorType.SUDDEN_BRAKING, 2,
-            DrivingBehaviorType.SUDDEN_ACCELERATION, 2,
-            DrivingBehaviorType.SUDDEN_TURNING, 2
-    );
 
     @Override
     @Transactional
@@ -60,29 +53,21 @@ public class DrivingBehaviorServiceImpl implements DrivingBehaviorService {
         }
 
         // Update frequency counter
-        int count = incrementCounter(alert.getBusId(), behavior);
-        int threshold = WARNING_THRESHOLDS.getOrDefault(behavior, Integer.MAX_VALUE);
+        int threshold = alertPolicyService.getPolicy().eventsFor(behavior);
+        int count = incrementCounter(alert.getBusId(), behavior, threshold);
 
         log.info("Received alert {} for Bus ID: {}. Current frequency: {}/{}", behavior, alert.getBusId(), count, threshold);
 
         if (count >= threshold) {
             log.warn("Threshold reached for {}. Triggering notification for Bus ID: {}", behavior, alert.getBusId());
             triggerWarning(alert.getBusId(), behavior);
-            // Reset counter after warning to allow for future alerts
-            resetCounter(alert.getBusId(), behavior);
         }
     }
 
-    private int incrementCounter(Integer busId, DrivingBehaviorType behavior) {
+    private int incrementCounter(Integer busId, DrivingBehaviorType behavior, int threshold) {
         Map<DrivingBehaviorType, Integer> busCounters = eventCounters.computeIfAbsent(busId, k -> new ConcurrentHashMap<>());
-        return busCounters.merge(behavior, 1, Integer::sum);
-    }
-
-    private void resetCounter(Integer busId, DrivingBehaviorType behavior) {
-        Map<DrivingBehaviorType, Integer> busCounters = eventCounters.get(busId);
-        if (busCounters != null) {
-            busCounters.remove(behavior);
-        }
+        return busCounters.compute(behavior, (key, previous) ->
+                previous == null || previous >= threshold ? 1 : previous + 1);
     }
 
     private void triggerWarning(Integer busId, DrivingBehaviorType behavior) {
@@ -114,13 +99,14 @@ public class DrivingBehaviorServiceImpl implements DrivingBehaviorService {
             return;
         }
 
-        notificationService.createNotification(
+        var notification = notificationService.createNotification(
                 title,
                 body,
                 NotificationCategory.SYSTEM_ALERT,
                 "DRIVING_MONITOR",
                 new java.util.ArrayList<>(receiverIds)
         );
+        notification.setSeverity(behavior == DrivingBehaviorType.CRASH_DETECTED ? "CRITICAL" : "HIGH");
     }
 
     private String getWarningMessage(DrivingBehaviorType behavior, String busNumber) {
@@ -155,7 +141,9 @@ public class DrivingBehaviorServiceImpl implements DrivingBehaviorService {
         statusLog.setStatus(alert.getBehavior() != null ? alert.getBehavior() : DrivingBehaviorType.NORMAL);
         statusLog.setLatitude(alert.getLatitude());
         statusLog.setLongitude(alert.getLongitude());
-        statusLog.setRecordedAt(java.time.LocalDateTime.now());
+        statusLog.setRecordedAt(alert.getTimestamp() == null ? java.time.LocalDateTime.now()
+                : java.time.LocalDateTime.ofInstant(java.time.Instant.ofEpochMilli(alert.getTimestamp()),
+                java.time.ZoneId.systemDefault()));
         drivingStatusLogRepository.save(statusLog);
 
         log.info("Saved driving status log [{}] for bus {}", statusLog.getStatus(), alert.getBusId());
@@ -191,14 +179,8 @@ public class DrivingBehaviorServiceImpl implements DrivingBehaviorService {
             int penalty = (harshBrakeCount * 5) + (aggressiveAccelCount * 4) + (dangerousTurnCount * 3);
             int safetyScore = Math.max(0, 100 - penalty);
 
-            String riskLevel;
-            if (safetyScore >= 90) {
-                riskLevel = "Low Risk";
-            } else if (safetyScore >= 70) {
-                riskLevel = "Moderate Risk";
-            } else {
-                riskLevel = "High Risk";
-            }
+            AlertPolicy policy = alertPolicyService.getPolicy();
+            String riskLevel = policy.severityFor(safetyScore);
 
             // Save individual driving status logs for occurred violations
             if (harshBrakeCount > 0) {
@@ -226,14 +208,17 @@ public class DrivingBehaviorServiceImpl implements DrivingBehaviorService {
                 receiverIds.add(bus.getOwner().getId());
             }
 
-            if (!receiverIds.isEmpty()) {
-                notificationService.createNotification(
+            // Retain all driving logs; notify only when the configured caution boundary is crossed.
+            if (!receiverIds.isEmpty() && safetyScore < policy.getCautionBelow()) {
+                var notification = notificationService.createNotification(
                         title,
                         body,
                         NotificationCategory.SYSTEM_ALERT,
                         "DRIVING_MONITOR",
                         new java.util.ArrayList<>(receiverIds)
                 );
+                notification.setSafetyScore(safetyScore);
+                notification.setSeverity(riskLevel);
                 log.info("Sent driving safety score notification for Bus ID: {}. Safety Score: {}/100 ({})", 
                         busId, safetyScore, riskLevel);
             }

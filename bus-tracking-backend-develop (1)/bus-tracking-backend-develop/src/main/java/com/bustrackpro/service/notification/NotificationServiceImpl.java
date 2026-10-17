@@ -53,6 +53,7 @@ public class NotificationServiceImpl implements NotificationService {
     public List<NotificationResponseDTO> getNotificationsByReceiverId(Integer receiverId) {
         List<NotificationResponseDTO> list = recipientRepository.findByReceiverId(receiverId).stream()
                 .map(this::convertToDto)
+                .sorted(java.util.Comparator.comparing(NotificationResponseDTO::getCreatedAt))
                 .collect(Collectors.toList());
         int size = list.size();
         if (size > 20) {
@@ -65,6 +66,7 @@ public class NotificationServiceImpl implements NotificationService {
     public List<NotificationResponseDTO> getUnreadNotificationsByReceiverId(Integer receiverId) {
         List<NotificationResponseDTO> list = recipientRepository.findByReceiverIdAndIsRead(receiverId, false).stream()
                 .map(this::convertToDto)
+                .sorted(java.util.Comparator.comparing(NotificationResponseDTO::getCreatedAt))
                 .collect(Collectors.toList());
         int size = list.size();
         if (size > 20) {
@@ -75,13 +77,13 @@ public class NotificationServiceImpl implements NotificationService {
 
     @Override
     public void markAsRead(Integer notificationId, Integer receiverId) {
-        recipientRepository.findByReceiverId(receiverId).stream()
-                .filter(r -> r.getNotification().getId().equals(notificationId) || r.getId().equals(notificationId))
+        NotificationRecipient recipient = recipientRepository.findByReceiverId(receiverId).stream()
+                .filter(r -> r.getNotification().getId().equals(notificationId))
                 .findFirst()
-                .ifPresent(recipient -> {
-                    recipient.setRead(true);
-                    recipientRepository.save(recipient);
-                });
+                .orElseThrow(() -> new org.springframework.web.server.ResponseStatusException(
+                        org.springframework.http.HttpStatus.NOT_FOUND, "Notification not found for this recipient"));
+        recipient.setRead(true);
+        recipientRepository.save(recipient);
     }
 
     private NotificationResponseDTO convertToDto(NotificationRecipient recipient) {
@@ -94,7 +96,9 @@ public class NotificationServiceImpl implements NotificationService {
                 notification.getCategory(),
                 notification.getCreatedBy(),
                 notification.getCreatedAt(),
-                recipient.isRead()
+                recipient.isRead(),
+                notification.getSafetyScore(),
+                notification.getSeverity()
         );
     }
 

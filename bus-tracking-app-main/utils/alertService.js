@@ -1,4 +1,11 @@
-import { Alert } from 'react-native';
+import { Alert, Platform } from 'react-native';
+
+export const showAlert = (title, message, buttons) => {
+  if (Platform.OS === 'web') {
+    window.alert(`${title}\n\n${message}`);
+    buttons?.find(button => button.style !== 'cancel')?.onPress?.();
+  } else Alert.alert(title, message, buttons);
+};
 
 /**
  * Shows an error alert to the user and logs the error to the console.
@@ -11,7 +18,7 @@ export const showError = (title, error) => {
   // Log to console for development (using log instead of error as requested to remove console.error)
   console.log(`[ERROR] ${title}:`, error);
   
-  Alert.alert(
+  showAlert(
     title,
     message,
     [{ text: 'OK' }]

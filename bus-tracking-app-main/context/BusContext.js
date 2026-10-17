@@ -1,7 +1,7 @@
-import React, { createContext, useState, useContext, useEffect, useCallback } from 'react';
+import React, { createContext, useState, useContext, useEffect, useCallback, useRef } from 'react';
 import { useAuth } from './AuthContext';
 import { getAssignedBusByDriverId, updateBusStatus, getAllBuses, startAssignment, completeAssignment } from '../services/busService';
-import * as SecureStore from 'expo-secure-store';
+import * as SecureStore from '../utils/storage';
 import { showError } from '../utils/alertService';
 
 
@@ -15,6 +15,9 @@ export const BusProvider = ({ children }) => {
   const [allBuses, setAllBuses] = useState([]);
   const [isDriving, setIsDriving] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
+  const updating = useRef(false);
+  const identity = useRef(user?.id);
+  identity.current = user?.id;
 
   const fetchAssignedBus = useCallback(async () => {
     if (!user?.id || user.role !== 'BUS_DRIVER') return;
@@ -27,29 +30,29 @@ export const BusProvider = ({ children }) => {
       let busData;
       if (savedBusId) {
         const buses = await getAllBuses();
-        busData = buses.find(b => (b.id || b.busId).toString() === savedBusId);
+        busData = buses.find(b => (b.id || b.busId).toString() === savedBusId && String(b.driver?.id) === String(user.id));
       }
       
       if (!busData) {
         busData = await getAssignedBusByDriverId(user.id);
       }
 
+      if (identity.current !== user.id) return;
       setCurrentBus(busData);
       
       if (busData) {
-        const drivingState = await SecureStore.getItemAsync(`isDriving_${user.id}`);
-        const isCurrentlyDriving = drivingState === 'true' || busData.status === 'DRIVING';
+        const isCurrentlyDriving = busData.status === 'DRIVING' || busData.driver?.status === 'DRIVING';
         setIsDriving(isCurrentlyDriving);
         if (isCurrentlyDriving) {
           await SecureStore.setItemAsync(`isDriving_${user.id}`, 'true');
         } else {
           await SecureStore.setItemAsync(`isDriving_${user.id}`, 'false');
         }
-      }
+      } else setIsDriving(false);
     } catch (error) {
-      showError('Bus Service', 'Failed to fetch assigned bus');
+      if (identity.current === user.id) showError('Bus Service', 'Failed to fetch assigned bus');
     } finally {
-      setIsLoading(false);
+      if (identity.current === user.id) setIsLoading(false);
     }
   }, [user?.id, user?.role]);
 
@@ -67,6 +70,7 @@ export const BusProvider = ({ children }) => {
   }, [user?.role]);
 
   useEffect(() => {
+    setCurrentBus(null); setAllBuses([]); setIsDriving(false); setIsLoading(false);
     fetchAssignedBus();
   }, [fetchAssignedBus]);
 
@@ -87,7 +91,9 @@ export const BusProvider = ({ children }) => {
   };
 
   const toggleDriving = async (assignmentId = null) => {
-    if (!currentBus || !user?.id) return;
+    if (!currentBus || !user?.id || updating.current) return;
+    updating.current = true;
+    setIsLoading(true);
 
     const newDrivingState = !isDriving;
     const status = newDrivingState ? 'DRIVING' : 'IDLE';
@@ -117,8 +123,12 @@ export const BusProvider = ({ children }) => {
       // Refresh the bus state to fetch updated schedules
       await fetchAssignedBus();
     } catch (error) {
+      try { await updateBusStatus(currentBus.id || currentBus.busId, isDriving ? 'DRIVING' : 'IDLE', user.id); } catch (_) { /* Reconcile on refresh. */ }
+      await fetchAssignedBus();
       showError('Bus Status', 'Failed to update driving status');
-      throw error;
+    } finally {
+      updating.current = false;
+      setIsLoading(false);
     }
   };
 

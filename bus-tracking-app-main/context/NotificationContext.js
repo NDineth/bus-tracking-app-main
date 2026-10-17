@@ -1,118 +1,71 @@
 import React, { createContext, useState, useContext, useEffect, useCallback, useRef } from 'react';
-import { Alert } from 'react-native';
-import { useRouter } from 'expo-router';
+import { AppState } from 'react-native';
 import { useAuth } from './AuthContext';
-import { getNotificationsByReceiverId, getUnreadNotificationsByReceiverId, markAsRead } from '../services/notificationService';
-import { showError } from '../utils/alertService';
-
+import { getNotificationsByReceiverId, markAsRead } from '../services/notificationService';
+import { isUnread, notificationId, sortNotifications } from '../utils/alertPolicy';
+import { errorMessage } from '../services/api';
 
 const NotificationContext = createContext();
-
 export const useNotifications = () => useContext(NotificationContext);
-
-export const NotificationProvider = ({ children }) => {
+export function NotificationProvider({ children }) {
   const { user } = useAuth();
   const [notifications, setNotifications] = useState([]);
-  const [unreadCount, setUnreadCount] = useState(0);
   const [isLoading, setIsLoading] = useState(false);
-  const lastNotificationIdRef = useRef(null);
-  const router = useRouter();
-
+  const [error, setError] = useState(null);
+  const [lastUpdated, setLastUpdated] = useState(null);
+  const identity = useRef(user?.id);
+  identity.current = user?.id;
+  const pending = useRef(new Set());
+  const acknowledged = useRef(new Set());
+  const fetching = useRef(null);
   const fetchNotifications = useCallback(async () => {
-    if (!user?.id) return;
-    
+    if (!user?.id || fetching.current === user.id) return;
+    const receiverId = user.id;
+    fetching.current = receiverId;
     setIsLoading(true);
     try {
-      const data = await getNotificationsByReceiverId(user.id);
-      setNotifications(data || []);
-      const unread = (data || []).filter(n => !(n.read !== undefined ? n.read : n.isRead)).length;
-      setUnreadCount(unread);
-
-      // Check for new approval notifications
-      if (data && data.length > 0) {
-        const sorted = [...data].sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
-        const latest = sorted[0];
-        const latestId = latest.notificationId || latest.id;
-        
-        if (lastNotificationIdRef.current !== null && latestId !== lastNotificationIdRef.current) {
-          const isLatestUnread = !(latest.read !== undefined ? latest.read : latest.isRead);
-          if (isLatestUnread && latest.title && latest.title.toLowerCase().includes('approval request')) {
-            Alert.alert(
-              latest.title,
-              latest.body,
-              [
-                { text: 'Dismiss', style: 'cancel' },
-                { 
-                  text: 'View Requests', 
-                  onPress: () => router.push('/my-requests') 
-                }
-              ]
-            );
-          }
-        }
-        lastNotificationIdRef.current = latestId;
-      }
-    } catch (error) {
-      console.log('Failed to fetch notifications:', error);
+      const data = await getNotificationsByReceiverId(receiverId);
+      if (identity.current !== receiverId) return;
+      setNotifications(sortNotifications(data || []).map(n => acknowledged.current.has(notificationId(n))
+        ? { ...n, isRead: true, read: true } : n));
+      setError(null); setLastUpdated(new Date());
+    } catch (e) {
+      if (identity.current === receiverId) setError(errorMessage(e));
     } finally {
-      setIsLoading(false);
-    }
-  }, [user?.id, router]);
-
-  const fetchUnreadCountOnly = useCallback(async () => {
-    if (!user?.id) return;
-
-    try {
-      const data = await getUnreadNotificationsByReceiverId(user.id);
-      setUnreadCount(data.length);
-    } catch (error) {
-      console.log('Failed to fetch unread count:', error);
+      if (fetching.current === receiverId) fetching.current = null;
+      if (identity.current === receiverId) setIsLoading(false);
     }
   }, [user?.id]);
-
-  // Keep a mutable ref of the latest fetchNotifications callback to prevent stale closures in setInterval
-  const fetchNotificationsRef = useRef(fetchNotifications);
   useEffect(() => {
-    fetchNotificationsRef.current = fetchNotifications;
+    setNotifications([]); setError(null); setLastUpdated(null); setIsLoading(false);
+    acknowledged.current = new Set(); pending.current = new Set();
+    fetchNotifications();
+    const interval = setInterval(() => {
+      if (AppState.currentState === 'active') fetchNotifications();
+    }, 30000);
+    const subscription = AppState.addEventListener('change', state => {
+      if (state === 'active') fetchNotifications();
+    });
+    return () => { clearInterval(interval); subscription.remove(); };
   }, [fetchNotifications]);
-
-  useEffect(() => {
-    if (user?.id) {
-      fetchNotificationsRef.current();
-      
-      // Poll every 30 seconds
-      const interval = setInterval(() => {
-        fetchNotificationsRef.current();
-      }, 30000);
-
-      return () => clearInterval(interval);
-    }
-  }, [user?.id]);
-
-  const markNotificationRead = async (notificationId) => {
-    if (!user?.id) return;
-
+  const markNotificationRead = async (id) => {
+    if (!user?.id || id == null || pending.current.has(id)) return;
+    const receiverId = user.id;
+    pending.current.add(id);
     try {
-      await markAsRead(notificationId, user.id);
-      // Update local state to be responsive
-      setNotifications(prev => 
-        prev.map(n => n.notificationId === notificationId ? { ...n, read: true, isRead: true } : n)
-      );
-      setUnreadCount(prev => Math.max(0, prev - 1));
-    } catch (error) {
-      showError('Notifications', 'Failed to mark notification as read');
-    }
+      await markAsRead(id, receiverId);
+      if (identity.current !== receiverId) return;
+      acknowledged.current.add(id);
+      setNotifications(previous => previous.map(n => notificationId(n) === id ? { ...n, isRead: true, read: true } : n));
+    } catch (e) {
+      if (identity.current === receiverId) setError(errorMessage(e));
+      throw e;
+    } finally { if (identity.current === receiverId) pending.current.delete(id); }
   };
-
-  return (
-    <NotificationContext.Provider value={{ 
-      notifications, 
-      unreadCount, 
-      isLoading, 
-      refreshNotifications: fetchNotifications,
-      markNotificationRead 
-    }}>
-      {children}
-    </NotificationContext.Provider>
-  );
-};
+  const markAllRead = async () => {
+    const results = await Promise.allSettled(notifications.filter(isUnread).map(n => markNotificationRead(notificationId(n))));
+    if (results.some(result => result.status === 'rejected')) throw new Error('Some alerts could not be marked read. Please retry.');
+  };
+  return <NotificationContext.Provider value={{ notifications, unreadCount: notifications.filter(isUnread).length,
+    isLoading, error, lastUpdated, refreshNotifications: fetchNotifications, markNotificationRead, markAllRead }}>{children}</NotificationContext.Provider>;
+}

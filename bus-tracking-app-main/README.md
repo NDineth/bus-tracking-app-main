@@ -1,3 +1,5 @@
+For frontend setup, workspace features, alert thresholds and verification, see [Frontend and alert management](docs/FRONTEND-AND-ALERTS.md).
+
 # 🚌 IoT-Enabled Smart Bus Route Monitoring & Revenue Management System
 
 A comprehensive digital transport management system designed to improve the **efficiency, transparency, and reliability** of public bus services in Sri Lanka. This solution integrates **IoT hardware** with a **cloud-based backend** to enable real-time monitoring, automated scheduling, and intelligent revenue management.

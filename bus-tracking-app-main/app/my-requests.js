@@ -6,6 +6,8 @@ import { useRouter } from 'expo-router';
 import { useAuth } from '../context/AuthContext';
 import { getUserApprovalRequests } from '../services/approvalService';
 import Colors from '../constants/Colors';
+import { Button, ErrorNotice, Metric, ui } from '../components/UI';
+import { errorMessage } from '../services/api';
 
 export default function MyRequestsScreen() {
   const { user } = useAuth();
@@ -13,20 +15,21 @@ export default function MyRequestsScreen() {
   const [requests, setRequests] = useState([]);
   const [isLoading, setIsLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
+  const [error, setError] = useState(null);
 
   const fetchRequests = useCallback(async () => {
     if (!user?.id) return;
     try {
       const data = await getUserApprovalRequests(user.id);
-      
+
       // Sort requests by createdAt (newest first)
       const sorted = (data || []).sort(
         (a, b) => new Date(b.createdAt) - new Date(a.createdAt)
       );
       setRequests(sorted);
+      setError(null);
     } catch (error) {
-      // Suppress error in local states but log
-      console.error('Failed to load requests:', error);
+      setError(errorMessage(error));
     } finally {
       setIsLoading(false);
       setRefreshing(false);
@@ -45,12 +48,12 @@ export default function MyRequestsScreen() {
   const getStatusBadgeStyle = (status) => {
     switch (status) {
       case 'APPROVED':
-        return { bg: '#34C75915', text: '#34C759', dot: '#34C759' };
+        return { bg: '#176B6015', text: '#176B60', dot: '#176B60' };
       case 'REJECTED':
-        return { bg: '#FF3B3015', text: '#FF3B30', dot: '#FF3B30' };
+        return { bg: '#BD334715', text: '#BD3347', dot: '#BD3347' };
       case 'PENDING':
       default:
-        return { bg: '#FF950015', text: '#FF9500', dot: '#FF9500' };
+        return { bg: '#9A650A15', text: '#9A650A', dot: '#9A650A' };
     }
   };
 
@@ -96,11 +99,11 @@ export default function MyRequestsScreen() {
       <View style={styles.card}>
         <View style={styles.cardHeader}>
           <View style={styles.titleContainer}>
-            <View style={[styles.typeIconContainer, { backgroundColor: isEmergency ? '#FF3B3010' : '#0066cc10' }]}>
-              <Ionicons 
-                name={isEmergency ? "warning-outline" : "calendar-outline"} 
-                size={20} 
-                color={isEmergency ? "#FF3B30" : Colors.primary} 
+            <View style={[styles.typeIconContainer, { backgroundColor: isEmergency ? '#BD334710' : '#0066cc10' }]}>
+              <Ionicons
+                name={isEmergency ? "warning-outline" : "calendar-outline"}
+                size={20}
+                color={isEmergency ? "#BD3347" : Colors.primary}
               />
             </View>
             <View>
@@ -110,7 +113,7 @@ export default function MyRequestsScreen() {
               <Text style={styles.busNumber}>Bus: {item.busNumber || 'Unknown'}</Text>
             </View>
           </View>
-          
+
           <View style={[styles.statusBadge, { backgroundColor: badge.bg }]}>
             <View style={[styles.statusDot, { backgroundColor: badge.dot }]} />
             <Text style={[styles.statusText, { color: badge.text }]}>
@@ -183,8 +186,9 @@ export default function MyRequestsScreen() {
         <FlatList
           data={requests}
           renderItem={renderItem}
-          keyExtractor={(item) => (item.id || item.approvalId || Math.random()).toString()}
+          keyExtractor={(item, index) => String(item.id ?? item.approvalId ?? index)}
           contentContainerStyle={styles.listContent}
+          ListHeaderComponent={<View style={{ gap: 14, marginBottom: 18 }}><ErrorNotice message={error} onRetry={onRefresh} /><View style={ui.metrics}><Metric label="Pending" value={requests.filter(r => r.status === 'PENDING').length} icon="time-outline" /><Metric label="Approved" value={requests.filter(r => r.status === 'APPROVED').length} icon="checkmark-circle-outline" /><Metric label="Rejected" value={requests.filter(r => r.status === 'REJECTED').length} icon="close-circle-outline" /></View><Button title="New approval request" icon="add-outline" onPress={() => router.push('/new-request')} /></View>}
           refreshControl={
             <RefreshControl refreshing={refreshing} onRefresh={onRefresh} colors={[Colors.primary]} />
           }
@@ -192,7 +196,7 @@ export default function MyRequestsScreen() {
             <View style={styles.emptyContainer}>
               <Ionicons name="documents-outline" size={64} color="#C7C7CC" />
               <Text style={styles.emptyText}>You haven't submitted any approval requests yet.</Text>
-              <TouchableOpacity 
+              <TouchableOpacity
                 style={styles.emptyButton}
                 onPress={() => router.push('/new-request')}
               >
@@ -209,7 +213,7 @@ export default function MyRequestsScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#F8F9FB',
+    backgroundColor: '#F4F6F8',
   },
   header: {
     flexDirection: 'row',
@@ -233,6 +237,9 @@ const styles = StyleSheet.create({
     color: '#000',
   },
   listContent: {
+    width: '100%',
+    maxWidth: 1000,
+    alignSelf: 'center',
     padding: 16,
     paddingBottom: 30,
   },
@@ -247,7 +254,7 @@ const styles = StyleSheet.create({
     shadowRadius: 10,
     elevation: 2,
     borderWidth: 1,
-    borderColor: '#F2F2F7',
+    borderColor: '#F0F4F5',
   },
   cardHeader: {
     flexDirection: 'row',
@@ -271,11 +278,11 @@ const styles = StyleSheet.create({
   cardTitle: {
     fontSize: 16,
     fontWeight: '700',
-    color: '#1C1C1E',
+    color: '#172D3B',
   },
   busNumber: {
     fontSize: 13,
-    color: '#8E8E93',
+    color: '#617381',
     marginTop: 2,
     fontWeight: '500',
   },
@@ -299,7 +306,7 @@ const styles = StyleSheet.create({
   },
   divider: {
     height: 1,
-    backgroundColor: '#F2F2F7',
+    backgroundColor: '#F0F4F5',
     marginVertical: 14,
   },
   cardBody: {
@@ -311,13 +318,13 @@ const styles = StyleSheet.create({
   },
   detailLabel: {
     fontSize: 14,
-    color: '#8E8E93',
+    color: '#617381',
     width: 70,
     fontWeight: '500',
   },
   detailValue: {
     fontSize: 14,
-    color: '#1C1C1E',
+    color: '#172D3B',
     fontWeight: '600',
     flex: 1,
   },
@@ -325,7 +332,7 @@ const styles = StyleSheet.create({
     marginTop: 8,
     paddingLeft: 12,
     borderLeftWidth: 3,
-    backgroundColor: '#F8F9FB',
+    backgroundColor: '#F4F6F8',
     paddingVertical: 10,
     paddingHorizontal: 10,
     borderRadius: 8,
@@ -345,12 +352,12 @@ const styles = StyleSheet.create({
   cardFooter: {
     marginTop: 14,
     borderTopWidth: 1,
-    borderTopColor: '#F2F2F7',
+    borderTopColor: '#F0F4F5',
     paddingTop: 10,
   },
   footerTime: {
     fontSize: 11,
-    color: '#8E8E93',
+    color: '#617381',
     fontWeight: '500',
   },
   centerContainer: {
@@ -363,7 +370,7 @@ const styles = StyleSheet.create({
   loadingText: {
     marginTop: 12,
     fontSize: 15,
-    color: '#8E8E93',
+    color: '#617381',
   },
   emptyContainer: {
     alignItems: 'center',
@@ -373,7 +380,7 @@ const styles = StyleSheet.create({
   },
   emptyText: {
     fontSize: 15,
-    color: '#8E8E93',
+    color: '#617381',
     textAlign: 'center',
     marginTop: 16,
     marginBottom: 24,

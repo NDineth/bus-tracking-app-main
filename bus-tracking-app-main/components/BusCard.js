@@ -1,16 +1,20 @@
+import { showAlert } from '../utils/alertService';
 import React, { useState, useEffect } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, Alert } from 'react-native';
+import { View, Text, StyleSheet, TouchableOpacity } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useRouter } from 'expo-router';
 import Colors from '../constants/Colors';
 import { getRouteSchedule } from '../services/busService';
+import { ErrorNotice } from './UI';
+import { errorMessage } from '../services/api';
 
 const BusCard = ({ bus, isDriving, onToggleDriving, isLoading }) => {
   const router = useRouter();
   const [nextSchedule, setNextSchedule] = useState(null);
   const [canStartDriving, setCanStartDriving] = useState(false);
   const [refreshKey, setRefreshKey] = useState(0);
+  const [scheduleError, setScheduleError] = useState(null);
 
   const getColomboNow = () => {
     const colomboOffset = 5.5 * 60 * 60 * 1000;
@@ -41,7 +45,7 @@ const BusCard = ({ bus, isDriving, onToggleDriving, isLoading }) => {
           };
 
           const validTurns = schedule.filter(s => {
-            if (!s.isYourTurn || s.rawStatus === 'COMPLETED' || s.rawStatus === 'CANCELLED') {
+            if (!s.isYourTurn || ['COMPLETED', 'CANCELLED', 'TURN_LOSS'].includes(s.rawStatus)) {
               return false;
             }
             const turnTime = getTurnDateTime(s.rawTime);
@@ -57,8 +61,10 @@ const BusCard = ({ bus, isDriving, onToggleDriving, isLoading }) => {
         }
 
         setNextSchedule(mySchedule);
+        setScheduleError(null);
       } catch (e) {
-        console.log('Error fetching schedule', e);
+        setNextSchedule(null);
+        setScheduleError(errorMessage(e));
       }
     };
     fetchNextSchedule();
@@ -119,7 +125,7 @@ const BusCard = ({ bus, isDriving, onToggleDriving, isLoading }) => {
   return (
     <View style={styles.container}>
       <LinearGradient
-        colors={isDriving ? ['#007AFF', '#0055CC'] : ['#5856D6', '#403CAD']}
+        colors={isDriving ? ['#176B60', '#125548'] : ['#142D3E', '#244B56']}
         style={styles.cardHeader}
         start={{ x: 0, y: 0 }}
         end={{ x: 1, y: 0 }}
@@ -132,10 +138,11 @@ const BusCard = ({ bus, isDriving, onToggleDriving, isLoading }) => {
       </LinearGradient>
 
       <View style={styles.cardBody}>
+        <ErrorNotice message={scheduleError} onRetry={() => setRefreshKey(key => key + 1)} />
         <View style={styles.row}>
           <View style={styles.infoBox}>
             <Text style={styles.infoLabel}>Status</Text>
-            <Text style={[styles.infoValue, { color: isDriving ? '#34C759' : '#8E8E93' }]}>
+            <Text style={[styles.infoValue, { color: isDriving ? '#176B60' : '#617381' }]}>
               {isDriving ? 'ON THE ROAD' : 'IDLE'}
             </Text>
           </View>
@@ -155,15 +162,15 @@ const BusCard = ({ bus, isDriving, onToggleDriving, isLoading }) => {
             onPress={() => {
               if (!isDriving && !canStartDriving) {
                 if (!nextSchedule) {
-                  Alert.alert('Cannot Start', 'There are no upcoming schedules for today.');
+                  showAlert('Cannot Start', 'There are no upcoming schedules for today.');
                 } else {
-                  Alert.alert('Cannot Start', `You can only start driving at ${nextSchedule.time}.`);
+                  showAlert('Cannot Start', `You can only start driving at ${nextSchedule.time}.`);
                 }
                 return;
               }
-              onToggleDriving(nextSchedule?.id);
+              onToggleDriving(isDriving && !['ACTIVE', 'IN_PROGRESS'].includes(nextSchedule?.rawStatus) ? null : nextSchedule?.id);
             }}
-            disabled={isLoading || (!isDriving && !canStartDriving && !nextSchedule)} // Only fully disable if no schedule at all, or let onPress handle the alert
+            disabled={isLoading || (!isDriving && !canStartDriving)}
             activeOpacity={0.8}
           >
             <Ionicons name={isDriving ? "stop-circle-outline" : "play-circle-outline"} size={24} color="#FFF" />
@@ -171,6 +178,7 @@ const BusCard = ({ bus, isDriving, onToggleDriving, isLoading }) => {
               {isLoading ? 'Processing...' : (isDriving ? 'Stop Driving' : 'Start Driving')}
             </Text>
           </TouchableOpacity>
+          {!isDriving && <Text style={{ color: Colors.textSecondary, fontSize: 12, lineHeight: 19 }}>{nextSchedule ? `Start is available from ${nextSchedule.time}, until 30 minutes after departure.` : 'No upcoming runs are available today.'}</Text>}
 
           <TouchableOpacity 
             style={styles.scheduleButton}
@@ -212,7 +220,7 @@ const BusCard = ({ bus, isDriving, onToggleDriving, isLoading }) => {
             activeOpacity={0.8}
           >
             <Ionicons name="list-outline" size={20} color={Colors.primary} />
-            <Text style={styles.agendaButtonText}>Weekly Personal Agenda</Text>
+            <Text style={styles.agendaButtonText}>Your 3-Day Agenda</Text>
           </TouchableOpacity>
         </View>
       </View>
@@ -266,7 +274,7 @@ const styles = StyleSheet.create({
   },
   infoLabel: {
     fontSize: 12,
-    color: '#8E8E93',
+    color: '#617381',
     textTransform: 'uppercase',
     letterSpacing: 1,
     marginBottom: 4,
@@ -274,7 +282,7 @@ const styles = StyleSheet.create({
   infoValue: {
     fontSize: 18,
     fontWeight: '700',
-    color: '#1C1C1E',
+    color: '#172D3B',
   },
   buttonContainer: {
     gap: 12,
@@ -299,10 +307,10 @@ const styles = StyleSheet.create({
     width: '100%',
   },
   startButton: {
-    backgroundColor: '#007AFF',
+    backgroundColor: '#176B60',
   },
   stopButton: {
-    backgroundColor: '#FF3B30',
+    backgroundColor: '#BD3347',
   },
   disabledButton: {
     backgroundColor: '#A2A2A2', // Gray out when disabled
@@ -355,7 +363,7 @@ const styles = StyleSheet.create({
   },
   emptyContainer: {
     padding: 30,
-    backgroundColor: '#F2F2F7',
+    backgroundColor: '#F0F4F5',
     borderRadius: 20,
     alignItems: 'center',
     justifyContent: 'center',
@@ -365,7 +373,7 @@ const styles = StyleSheet.create({
     marginBottom: 20,
   },
   emptyText: {
-    color: '#8E8E93',
+    color: '#617381',
     fontSize: 16,
   }
 });

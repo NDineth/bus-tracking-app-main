@@ -1,852 +1,186 @@
-import React, { useState, useEffect, useCallback } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, ScrollView, RefreshControl, ActivityIndicator } from 'react-native';
-import { useAuth } from '../../context/AuthContext';
-import Colors from '../../constants/Colors';
+import React, { useState, useCallback, useEffect, useRef } from 'react';
+import { View, Text, StyleSheet, ScrollView, RefreshControl, TouchableOpacity, TextInput, ActivityIndicator, useWindowDimensions } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { useBus } from '../../context/BusContext';
-import BusCard from '../../components/BusCard';
 import { useRouter } from 'expo-router';
-import { getAllBuses, getFinanceSummary, getFleetSummary } from '../../services/busService';
-import { showError } from '../../utils/alertService';
+import { useAuth } from '../../context/AuthContext';
+import { useBus } from '../../context/BusContext';
+import { useNotifications } from '../../context/NotificationContext';
+import { useAlertPolicy } from '../../context/AlertPolicyContext';
+import { getAllBuses, getFleetSummary, getFinanceSummary } from '../../services/busService';
+import { errorMessage } from '../../services/api';
+import { alertSeverity, safetyScore, isUnread, SEVERITIES } from '../../utils/alertPolicy';
+import { Button, EmptyState, ErrorNotice, Metric, SectionTitle, ui } from '../../components/UI';
+import BusCard from '../../components/BusCard';
+import NotificationItem from '../../components/NotificationItem';
+import Colors from '../../constants/Colors';
+
+const money = value => `LKR ${Number(value || 0).toLocaleString('en-LK', { maximumFractionDigits: 0 })}`;
+const roles = { BUS_DRIVER: 'Driver workspace', BUS_OWNER: 'Owner workspace', ADMIN: 'Administration', BUS_AUTHORITY_USER: 'Authority workspace' };
+const isUnavailable = bus => bus.status === 'UNAVAILABLE' || bus.availabilityStatus === 'UNAVAILABLE';
 
 export default function HomeScreen() {
-  const { user, logout } = useAuth();
-  const { currentBus, isDriving, toggleDriving, isLoading: isDriverLoading } = useBus();
+  const { user } = useAuth();
+  const { currentBus, isDriving, toggleDriving, refreshBus, isLoading: driverLoading } = useBus();
+  const { notifications, unreadCount, refreshNotifications, markNotificationRead, error: notificationError, lastUpdated } = useNotifications();
+  const { policy, loaded: policyLoaded, error: policyError } = useAlertPolicy();
   const router = useRouter();
-
-  // Owner specific states
+  const { width } = useWindowDimensions();
+  const wide = width >= 980;
+  const driver = user?.role === 'BUS_DRIVER';
+  const canFinance = ['BUS_OWNER', 'ADMIN'].includes(user?.role);
+  const canRequest = ['BUS_OWNER', 'BUS_DRIVER'].includes(user?.role);
   const [buses, setBuses] = useState([]);
-  const [fleetSummary, setFleetSummary] = useState(null);
-  const [financeSummary, setFinanceSummary] = useState([]);
-  const [isOwnerLoading, setIsOwnerLoading] = useState(false);
+  const [summary, setSummary] = useState(null);
+  const [finances, setFinances] = useState([]);
+  const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
-  const [activeTab, setActiveTab] = useState('buses'); // 'buses' or 'reports'
+  const [error, setError] = useState(null);
+  const [financeError, setFinanceError] = useState(null);
+  const [query, setQuery] = useState('');
+  const [filter, setFilter] = useState('all');
+  const [section, setSection] = useState('fleet');
+  const identity = useRef(user?.id);
+  identity.current = user?.id;
 
-  const getFriendlyRole = (role) => {
-    const roles = {
-      'BUS_DRIVER': 'Bus Driver',
-      'BUS_OWNER': 'Bus Owner',
-      'ADMIN': 'Administrator',
-      'PASSENGER': 'Passenger',
-    };
-    return roles[role] || role;
-  };
+  const load = useCallback(async () => {
+    if (driver || !user?.id) { setLoading(false); return; }
+    const ownerId = user.role === 'BUS_OWNER' ? user.id : undefined;
+    const results = await Promise.allSettled([getAllBuses(), getFleetSummary(ownerId),
+      canFinance ? getFinanceSummary() : Promise.resolve([])]);
+    if (identity.current !== user.id) return;
+    if (results[0].status === 'fulfilled') {
+      setBuses(ownerId ? results[0].value.filter(bus => String(bus.owner?.id) === String(ownerId)) : results[0].value);
+      setError(null);
+    } else setError(errorMessage(results[0].reason));
+    setSummary(results[1].status === 'fulfilled' ? results[1].value : null);
+    if (results[2].status === 'fulfilled') { setFinances(results[2].value || []); setFinanceError(null); }
+    else setFinanceError(errorMessage(results[2].reason));
+    setLoading(false);
+  }, [user?.id, user?.role, driver, canFinance]);
 
-  const fetchOwnerData = useCallback(async () => {
-    if (user?.role !== 'BUS_OWNER') return;
-    try {
-      // Fetch buses
-      const allBuses = await getAllBuses();
-      const filtered = allBuses.filter(b => b.owner && b.owner.id === user.id);
-      setBuses(filtered);
-
-      // Fetch fleet summary
-      try {
-        const summary = await getFleetSummary(user.id);
-        setFleetSummary(summary);
-      } catch (e) {
-        console.log('Failed to fetch fleet summary:', e);
-      }
-
-      // Fetch financial summary for the last 30 days
-      const toDate = new Date();
-      const fromDate = new Date();
-      fromDate.setDate(toDate.getDate() - 30);
-      const toStr = toDate.toISOString().split('T')[0];
-      const fromStr = fromDate.toISOString().split('T')[0];
-
-      const financeData = await getFinanceSummary(fromStr, toStr);
-      setFinanceSummary(financeData || []);
-    } catch (error) {
-      showError('Dashboard', 'Failed to fetch owner fleet data');
-    }
-  }, [user]);
-
-  const onRefresh = async () => {
+  useEffect(() => { setLoading(true); setBuses([]); setFinances([]); setSummary(null); load(); }, [load]);
+  const refresh = async () => {
     setRefreshing(true);
-    if (user?.role === 'BUS_OWNER') {
-      await fetchOwnerData();
-    }
-    setRefreshing(false);
+    try { await Promise.allSettled([driver ? refreshBus() : load(), refreshNotifications()]); }
+    finally { setRefreshing(false); }
   };
+  const unavailable = summary?.unavailableBusCount ?? buses.filter(isUnavailable).length;
+  const active = summary?.activeFleetCount ?? buses.filter(bus => ['DRIVING', 'ACTIVE', 'IN_PROGRESS'].includes(bus.status)).length;
+  const latestScored = notifications.find(n => safetyScore(n) !== null);
+  const score = latestScored ? safetyScore(latestScored) : null;
+  const severity = latestScored ? alertSeverity(latestScored, policy) : 'INFO';
+  const risk = SEVERITIES[severity];
+  const urgent = notifications.filter(n => isUnread(n) && ['CRITICAL', 'HIGH'].includes(alertSeverity(n, policy))).length;
+  const totals = finances.reduce((acc, row) => ({ fees: acc.fees + Number(row.permitFeeTotal || 0),
+    commissions: acc.commissions + Number(row.commissionTotal || 0), penalties: acc.penalties + Number(row.penaltyTotal || 0) }), { fees: 0, commissions: 0, penalties: 0 });
+  const filtered = buses.filter(bus => {
+    const match = `${bus.busNumber} ${bus.route} ${bus.assignedDriver}`.toLowerCase().includes(query.toLowerCase());
+    return match && (filter === 'all' || (filter === 'unavailable' ? isUnavailable(bus) : ['DRIVING', 'ACTIVE', 'IN_PROGRESS'].includes(bus.status)));
+  });
+  const navigate = (pathname, bus) => router.push({ pathname, params: { busId: bus.id, busNumber: bus.busNumber, route: bus.route } });
+  const displayName = typeof user?.name === 'string' && user.name ? user.name : user?.firstName || 'there';
 
-  useEffect(() => {
-    if (user?.role === 'BUS_OWNER') {
-      setIsOwnerLoading(true);
-      fetchOwnerData().finally(() => setIsOwnerLoading(false));
-    }
-  }, [user, fetchOwnerData]);
-
-  const stats = (() => {
-    const totalBuses = fleetSummary?.totalFleetCount ?? buses.length;
-    const unavailableBuses = fleetSummary?.unavailableBusCount ?? buses.filter(b => b.status === 'UNAVAILABLE').length;
-    const activeBuses = fleetSummary?.activeFleetCount ?? Math.max(0, totalBuses - unavailableBuses);
-
-    let totalPermitFees = 0;
-    let totalCommissions = 0;
-    let totalPenalties = 0;
-
-    if (financeSummary && Array.isArray(financeSummary)) {
-      financeSummary.forEach(item => {
-        totalPermitFees += Number(item.permitFeeTotal || 0);
-        totalCommissions += Number(item.commissionTotal || 0);
-        totalPenalties += Number(item.penaltyTotal || 0);
-      });
-    }
-
-    const netPayable = totalPermitFees - totalCommissions + totalPenalties;
-
-    return {
-      totalBuses,
-      activeBuses,
-      unavailableBuses,
-      netPayable
-    };
-  })();
-
-  const renderReportsSection = () => {
-    if (financeSummary.length === 0) {
-      return (
-        <View style={styles.emptyContainer}>
-          <Ionicons name="calculator-outline" size={64} color="#C7C7CC" />
-          <Text style={styles.emptyText}>No financial records found for the last 30 days.</Text>
-        </View>
-      );
-    }
-
-    return (
-      <View style={{ gap: 16 }}>
-        <Text style={styles.sectionTitle}>Fleet Financial Summaries (30 Days)</Text>
-        {financeSummary.map(item => {
-          const permitFees = Number(item.permitFeeTotal || 0);
-          const commissions = Number(item.commissionTotal || 0);
-          const penalties = Number(item.penaltyTotal || 0);
-          const netPayable = permitFees - commissions + penalties;
-
-          return (
-            <View key={item.busId} style={styles.reportRowCard}>
-              <View style={styles.reportCardHeader}>
-                <Text style={styles.reportBusNum}>{item.busNumber}</Text>
-                <Text style={[styles.reportGrandTotal, { color: Colors.primary }]}>
-                  LKR {netPayable.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                </Text>
-              </View>
-
-              <View style={styles.divider} />
-
-              <View style={styles.breakdownGrid}>
-                <View style={styles.breakdownCol}>
-                  <Text style={styles.breakdownLabel}>Permit Fees</Text>
-                  <Text style={styles.breakdownVal}>LKR {permitFees.toLocaleString('en-US')}</Text>
-                </View>
-                <View style={styles.breakdownCol}>
-                  <Text style={styles.breakdownLabel}>Commissions</Text>
-                  <Text style={[styles.breakdownVal, { color: '#FF9500' }]}>- LKR {commissions.toLocaleString('en-US')}</Text>
-                </View>
-                <View style={styles.breakdownCol}>
-                  <Text style={styles.breakdownLabel}>Fines/Penalties</Text>
-                  <Text style={[styles.breakdownVal, { color: '#FF3B30' }]}>+ LKR {penalties.toLocaleString('en-US')}</Text>
-                </View>
-              </View>
-
-              <TouchableOpacity
-                style={styles.viewDetailedReportButton}
-                onPress={() => router.push({
-                  pathname: '/daily-net',
-                  params: {
-                    busId: item.busId,
-                    busNumber: item.busNumber
-                  }
-                })}
-              >
-                <Text style={styles.viewDetailedReportText}>View Daily Breakdown</Text>
-                <Ionicons name="arrow-forward" size={16} color={Colors.primary} />
-              </TouchableOpacity>
-            </View>
-          );
-        })}
-      </View>
-    );
-  };
-
-  const renderOwnerDashboard = () => {
-    if (isOwnerLoading && buses.length === 0) {
-      return (
-        <View style={styles.loaderContainer}>
-          <ActivityIndicator size="large" color={Colors.primary} />
-          <Text style={styles.loaderText}>Loading dashboard...</Text>
-        </View>
-      );
-    }
-
-    return (
-      <ScrollView
-        contentContainerStyle={styles.scrollContainer}
-        showsVerticalScrollIndicator={false}
-        refreshControl={
-          <RefreshControl refreshing={refreshing} onRefresh={onRefresh} colors={[Colors.primary]} />
-        }
-      >
-        {/* Statistics Ribbon */}
-        <View style={styles.statsContainer}>
-          <View style={styles.statCard}>
-            <Text style={styles.statNumber}>{stats.totalBuses}</Text>
-            <Text style={styles.statLabel}>Total Fleet</Text>
-          </View>
-          <View style={styles.statCard}>
-            <Text style={[styles.statNumber, { color: '#34C759' }]}>{stats.activeBuses}</Text>
-            <Text style={styles.statLabel}>Active Buses</Text>
-          </View>
-          <View style={styles.statCard}>
-            <Text style={[styles.statNumber, { color: stats.unavailableBuses > 0 ? '#FF3B30' : '#8E8E93' }]}>
-              {stats.unavailableBuses}
-            </Text>
-            <Text style={styles.statLabel}>Unavailable</Text>
-          </View>
-          <View style={[styles.statCard, { flex: 1.3 }]}>
-            <Text style={[styles.statNumber, { color: Colors.primary, fontSize: 13 }]} numberOfLines={1}>
-              LKR {stats.netPayable.toLocaleString('en-US', { maximumFractionDigits: 0 })}
-            </Text>
-            <Text style={styles.statLabel}>30D Net Authority</Text>
-          </View>
-        </View>
-
-        {/* Quick Actions / Approval Requests */}
-        <Text style={[styles.sectionTitle, { marginTop: 10, marginBottom: 12 }]}>Approval Requests</Text>
-        <View style={styles.quickActionsRow}>
-          <TouchableOpacity 
-            style={styles.quickActionCard}
-            onPress={() => router.push('/new-request')}
-          >
-            <View style={[styles.quickActionIconContainer, { backgroundColor: Colors.primary + '15' }]}>
-              <Ionicons name="add-circle" size={28} color={Colors.primary} />
-            </View>
-            <Text style={styles.quickActionTitle}>New Request</Text>
-            <Text style={styles.quickActionDesc}>Submit a new emergency or schedule change request</Text>
-          </TouchableOpacity>
-
-          <TouchableOpacity 
-            style={styles.quickActionCard}
-            onPress={() => router.push('/my-requests')}
-          >
-            <View style={[styles.quickActionIconContainer, { backgroundColor: '#FF950015' }]}>
-              <Ionicons name="document-text" size={28} color="#FF9500" />
-            </View>
-            <Text style={styles.quickActionTitle}>My Requests</Text>
-            <Text style={styles.quickActionDesc}>Track status of submitted approval requests</Text>
-          </TouchableOpacity>
-        </View>
-
-        {/* Tab Buttons (Owned Buses List vs Daily Net Reports) */}
-        <View style={styles.tabContainer}>
-          <TouchableOpacity
-            style={[styles.tabButton, activeTab === 'buses' && styles.activeTabButton]}
-            onPress={() => setActiveTab('buses')}
-          >
-            <Ionicons name="bus-outline" size={18} color={activeTab === 'buses' ? '#FFF' : Colors.primary} />
-            <Text style={[styles.tabButtonText, activeTab === 'buses' && styles.activeTabButtonText]}>
-              Owned Buses
-            </Text>
-          </TouchableOpacity>
-
-          <TouchableOpacity
-            style={[styles.tabButton, activeTab === 'reports' && styles.activeTabButton]}
-            onPress={() => setActiveTab('reports')}
-          >
-            <Ionicons name="calculator-outline" size={18} color={activeTab === 'reports' ? '#FFF' : Colors.primary} />
-            <Text style={[styles.tabButtonText, activeTab === 'reports' && styles.activeTabButtonText]}>
-              Daily Net Reports
-            </Text>
-          </TouchableOpacity>
-        </View>
-
-        {/* Dynamic Tab Content */}
-        {activeTab === 'buses' ? (
-          <View>
-            {/* Fleet Section */}
-            <View style={styles.fleetHeader}>
-              <Text style={styles.sectionTitle}>Your Fleet</Text>
-              <Text style={styles.fleetCount}>{buses.length} Bus{buses.length !== 1 ? 'es' : ''}</Text>
-            </View>
-
-            {buses.length === 0 ? (
-              <View style={styles.emptyContainer}>
-                <Ionicons name="bus-outline" size={64} color="#C7C7CC" />
-                <Text style={styles.emptyText}>You don't have any buses registered in your fleet.</Text>
-              </View>
-            ) : (
-              buses.map(bus => {
-                const isUnavailable = bus.status === 'UNAVAILABLE';
-                const isPending = bus.status === 'PENDING_APPROVAL';
-                const isActive = bus.status === 'ACTIVE' || (!isUnavailable && !isPending && bus.status !== 'IDLE' && bus.status !== 'OFFLINE');
-
-                return (
-                  <View key={bus.id} style={styles.busRowCard}>
-                    <View style={styles.cardHeaderRow}>
-                      <View style={{ flex: 1, paddingRight: 8 }}>
-                        <Text style={styles.busNumText}>{bus.busNumber}</Text>
-                        <Text style={styles.busRouteText}>{bus.route}</Text>
-                      </View>
-                      <View style={[
-                        styles.statusBadge, 
-                        isUnavailable ? { backgroundColor: '#FF3B3015' } :
-                        isPending ? { backgroundColor: '#FF950015' } :
-                        isActive ? styles.activeBadge : styles.idleBadge
-                      ]}>
-                        <View style={[
-                          styles.statusDot, 
-                          isUnavailable ? { backgroundColor: '#FF3B30' } :
-                          isPending ? { backgroundColor: '#FF9500' } :
-                          isActive ? styles.activeDot : styles.idleDot
-                        ]} />
-                        <Text style={[
-                          styles.statusBadgeText, 
-                          isUnavailable ? { color: '#FF3B30' } :
-                          isPending ? { color: '#FF9500' } :
-                          isActive ? styles.activeBadgeText : styles.idleBadgeText
-                        ]}>
-                          {isUnavailable ? 'UNAVAILABLE' : isPending ? 'PENDING' : isActive ? 'ACTIVE' : 'IDLE'}
-                        </Text>
-                      </View>
-                    </View>
-
-                    {isUnavailable && bus.unavailabilityReason && (
-                      <View style={{ marginTop: 8, padding: 8, backgroundColor: '#FF3B3010', borderRadius: 8, flexDirection: 'row', alignItems: 'center', gap: 6 }}>
-                        <Ionicons name="alert-circle-outline" size={16} color="#FF3B30" />
-                        <Text style={{ fontSize: 12, color: '#FF3B30', fontWeight: '600', flex: 1 }} numberOfLines={1}>
-                          {bus.unavailabilityReason}
-                        </Text>
-                      </View>
-                    )}
-
-                    <View style={styles.divider} />
-
-                    <View style={styles.busInfoGrid}>
-                      <View style={styles.infoRow}>
-                        <Ionicons name="person-outline" size={16} color="#8E8E93" />
-                        <Text style={styles.infoText}>
-                          Driver: <Text style={styles.infoValue}>{bus.assignedDriver}</Text>
-                        </Text>
-                      </View>
-                      <View style={styles.infoRow}>
-                        <Ionicons name="people-outline" size={16} color="#8E8E93" />
-                        <Text style={styles.infoText}>
-                          Capacity: <Text style={styles.infoValue}>{bus.capacity} seats</Text>
-                        </Text>
-                      </View>
-                      {bus.nextTurn && bus.nextTurn !== 'N/A' && (
-                        <View style={styles.infoRow}>
-                          <Ionicons name="time-outline" size={16} color="#8E8E93" />
-                          <Text style={styles.infoText}>
-                            Next Turn: <Text style={styles.infoValue}>{bus.nextTurn}</Text>
-                          </Text>
-                        </View>
-                      )}
-                    </View>
-
-                    <View style={styles.actionButtonsRow}>
-                      <TouchableOpacity
-                        style={[styles.actionButton, styles.scheduleButton]}
-                        onPress={() => router.push({
-                          pathname: '/bus-schedule',
-                          params: {
-                            busId: bus.id,
-                            busNumber: bus.busNumber,
-                            route: bus.route
-                          }
-                        })}
-                      >
-                        <Ionicons name="calendar-outline" size={15} color={Colors.primary} />
-                        <Text style={styles.actionButtonText}>Schedule</Text>
-                      </TouchableOpacity>
-
-                      <TouchableOpacity
-                        style={[styles.actionButton, styles.agendaButton]}
-                        onPress={() => router.push({
-                          pathname: '/bus-agenda',
-                          params: { busNumber: bus.busNumber }
-                        })}
-                      >
-                        <Ionicons name="list-outline" size={15} color={Colors.primary} />
-                        <Text style={styles.actionButtonText}>Agenda</Text>
-                      </TouchableOpacity>
-
-                      <TouchableOpacity
-                        style={[styles.actionButton, styles.reportButton]}
-                        onPress={() => router.push({
-                          pathname: '/daily-net',
-                          params: {
-                            busId: bus.id,
-                            busNumber: bus.busNumber
-                          }
-                        })}
-                      >
-                        <Ionicons name="calculator-outline" size={15} color="#34C759" />
-                        <Text style={[styles.actionButtonText, { color: '#34C759' }]}>Net Report</Text>
-                      </TouchableOpacity>
-                    </View>
-                  </View>
-                );
-              })
-            )}
-          </View>
-        ) : (
-          renderReportsSection()
-        )}
-      </ScrollView>
-    );
-  };
-
-  return (
-    <View style={styles.container}>
-      <View style={styles.header}>
-        <View>
-          <Text style={styles.greeting}>Hello, {user?.name || (user?.firstName ? `${user.firstName} ${user.lastName}` : 'User')}</Text>
-          <Text style={styles.role}>{getFriendlyRole(user?.role)}</Text>
-        </View>
-        <TouchableOpacity style={styles.logoutButton} onPress={logout}>
-          <Text style={styles.logoutText}>Logout</Text>
-        </TouchableOpacity>
-      </View>
-
-      {user?.role === 'BUS_DRIVER' && (
-        <ScrollView contentContainerStyle={styles.driverScrollContainer} showsVerticalScrollIndicator={false}>
-          <View style={styles.busSection}>
-            <View style={styles.sectionHeader}>
-              <Text style={styles.sectionTitle}>Your Assigned Bus</Text>
-              <TouchableOpacity
-                onPress={() => router.push('/allowed-buses')}
-                style={styles.browseButton}
-              >
-                <Ionicons name="grid-outline" size={18} color={Colors.primary} />
-                <Text style={styles.changeLink}>Allowed Buses</Text>
-              </TouchableOpacity>
-            </View>
-            <BusCard
-              bus={currentBus}
-              isDriving={isDriving}
-              onToggleDriving={toggleDriving}
-              isLoading={isDriverLoading}
-            />
-          </View>
-
-          {/* Quick Actions / Approval Requests */}
-          <Text style={[styles.sectionTitle, { marginTop: 24, marginBottom: 12 }]}>Approval Requests</Text>
-          <View style={styles.quickActionsRow}>
-            <TouchableOpacity 
-              style={styles.quickActionCard}
-              onPress={() => router.push('/new-request')}
-            >
-              <View style={[styles.quickActionIconContainer, { backgroundColor: Colors.primary + '15' }]}>
-                <Ionicons name="add-circle" size={28} color={Colors.primary} />
-              </View>
-              <Text style={styles.quickActionTitle}>New Request</Text>
-              <Text style={styles.quickActionDesc}>Submit a new emergency or schedule change request</Text>
-            </TouchableOpacity>
-
-            <TouchableOpacity 
-              style={styles.quickActionCard}
-              onPress={() => router.push('/my-requests')}
-            >
-              <View style={[styles.quickActionIconContainer, { backgroundColor: '#FF950015' }]}>
-                <Ionicons name="document-text" size={28} color="#FF9500" />
-              </View>
-              <Text style={styles.quickActionTitle}>My Requests</Text>
-              <Text style={styles.quickActionDesc}>Track status of submitted approval requests</Text>
-            </TouchableOpacity>
-          </View>
-        </ScrollView>
-      )}
-
-      {user?.role === 'BUS_OWNER' && renderOwnerDashboard()}
+  return <ScrollView style={ui.page} contentContainerStyle={ui.content} showsVerticalScrollIndicator={false}
+    refreshControl={<RefreshControl refreshing={refreshing} onRefresh={refresh} tintColor={Colors.primary} />}>
+    <View style={styles.heading}>
+      <View style={{ flex: 1 }}><Text style={ui.eyebrow}>{roles[user?.role] || 'Bus operations'}</Text>
+        <Text style={styles.title}>Hello, {displayName.split(' ')[0]}<Text style={{ color: Colors.primary }}>.</Text></Text>
+        <Text style={ui.subtitle}>A clearer view of your day on the road.</Text></View>
+      <TouchableOpacity accessibilityRole="button" accessibilityLabel="Refresh dashboard" style={styles.refresh} onPress={refresh}>
+        <Ionicons name="refresh-outline" size={20} color={Colors.primary} /></TouchableOpacity>
     </View>
-  );
+
+    <View style={styles.hero}>
+      <View style={{ flex: 1, minWidth: 200 }}><Text style={styles.heroEyebrow}>BUS TRACK PRO / OPERATIONS</Text>
+        <Text style={styles.heroTitle}>{driver ? (isDriving ? 'Your journey is underway.' : 'Ready for your next journey?') : 'Every bus. A better journey.'}</Text>
+        <Text style={styles.heroText}>{driver ? 'Your assigned bus, daily schedule and earnings, together in one place.' : 'Keep your fleet moving with clear schedules, financial summaries and safety alerts.'}</Text>
+        <View style={styles.heroMeta}><View style={styles.dot} /><Text style={styles.heroMetaText}>Alerts refresh every 30 seconds</Text></View>
+      </View>
+      <View style={styles.heroIcon}><Ionicons name={driver ? 'navigate-outline' : 'bus-outline'} size={55} color="#D5EAE2" /></View>
+    </View>
+
+    {urgent > 0 && <TouchableOpacity accessibilityRole="button" onPress={() => router.push('/(tabs)/alerts')} style={styles.urgent}>
+      <Ionicons name="warning-outline" size={24} color={Colors.error} /><View style={{ flex: 1 }}>
+        <Text style={styles.urgentTitle}>{urgent} unread safety alert{urgent === 1 ? '' : 's'} need attention</Text>
+        <Text style={ui.subtitle}>Review critical and high risk alerts in the alert center.</Text></View><Ionicons name="chevron-forward" size={20} color={Colors.error} /></TouchableOpacity>}
+
+    <View style={ui.metrics}>
+      {driver ? <Metric label="Your bus" value={currentBus?.busNumber || 'Unassigned'} icon="bus-outline" detail={isDriving ? 'Currently on the road' : 'Check your next departure'} />
+        : <Metric label="Total fleet" value={loading ? '—' : summary?.totalFleetCount ?? buses.length} icon="bus-outline" detail="Registered buses" />}
+      <Metric label={driver ? 'Driving status' : 'Active fleet'} value={driver ? (isDriving ? 'On the road' : 'Off duty') : loading ? '—' : active} icon="navigate-outline" detail={driver ? 'Manage your run below' : `${unavailable} unavailable today`} />
+      <Metric label="Unread alerts" value={unreadCount} icon="notifications-outline" color={urgent ? Colors.error : Colors.primary} detail="Among 20 recent notifications" />
+      <Metric label="Latest alert score" value={score === null ? '—' : `${score}/100`} icon="shield-checkmark-outline" color={risk.color} detail={score === null ? 'No scored alerts received' : `${risk.label} · latest scored event`} />
+    </View>
+
+    <View style={[styles.columns, wide && { flexDirection: 'row', alignItems: 'flex-start' }]}>
+      <View style={{ flex: wide ? 2 : undefined, gap: 20 }}>
+        {driver ? <View><SectionTitle title="Your assigned bus" subtitle="Manage your run and see what comes next" action="Browse buses" onPress={() => router.push('/allowed-buses')} />
+          {driverLoading && !currentBus ? <ActivityIndicator color={Colors.primary} /> : <BusCard bus={currentBus} isDriving={isDriving} onToggleDriving={toggleDriving} isLoading={driverLoading} />}</View>
+          : <View>
+            <SectionTitle title="Fleet workspace" subtitle="Schedules, availability and reports" />
+            {canFinance && <View style={[styles.chips, { marginBottom: 16 }]}>{[['fleet', 'Your fleet', 'bus-outline'], ['reports', 'Financial reports', 'stats-chart-outline']].map(([id, label, icon]) =>
+              <TouchableOpacity accessibilityRole="tab" accessibilityState={{ selected: section === id }} key={id} onPress={() => setSection(id)} style={[ui.chip, section === id && ui.chipSelected]}>
+                <Ionicons name={icon} size={17} color={section === id ? '#FFF' : Colors.textSecondary} /><Text style={[ui.chipText, section === id && { color: '#FFF' }]}>{label}</Text></TouchableOpacity>)}</View>}
+            <ErrorNotice message={error} onRetry={load} />
+            {loading ? <View style={[ui.card, { alignItems: 'center', gap: 12 }]}><ActivityIndicator color={Colors.primary} /><Text style={ui.subtitle}>Loading your workspace…</Text></View> : section === 'fleet' ? <>
+              <View style={styles.search}><Ionicons name="search-outline" size={20} color={Colors.muted} /><TextInput accessibilityLabel="Search fleet" placeholder="Search bus, route or driver" placeholderTextColor={Colors.muted} value={query} onChangeText={setQuery} style={styles.searchInput} />
+                {!!query && <TouchableOpacity accessibilityLabel="Clear search" onPress={() => setQuery('')} style={{ padding: 10 }}><Ionicons name="close" size={18} color={Colors.muted} /></TouchableOpacity>}</View>
+              <View style={[styles.chips, { marginVertical: 12 }]}>{[['all', 'All buses'], ['active', 'On the road'], ['unavailable', 'Unavailable']].map(([id, label]) =>
+                <TouchableOpacity accessibilityRole="button" accessibilityState={{ selected: filter === id }} key={id} onPress={() => setFilter(id)} style={[ui.chip, filter === id && { backgroundColor: Colors.primaryLight, borderColor: '#BAD5CA' }]}><Text style={ui.chipText}>{label}</Text></TouchableOpacity>)}</View>
+              {!filtered.length && <EmptyState icon="bus-outline" title={buses.length ? 'No matching buses' : 'Your fleet will appear here'} description={buses.length ? 'Try another search or filter.' : 'Registered buses and their schedules will be shown when available.'} action={buses.length ? 'Clear filters' : 'Refresh fleet'} onPress={() => { setQuery(''); setFilter('all'); if (!buses.length) load(); }} />}
+              {filtered.map(bus => <View key={bus.id} style={[ui.card, { marginBottom: 12 }]}>
+                <View style={styles.busHeading}><View style={styles.busIcon}><Ionicons name="bus-outline" size={24} color={Colors.primary} /></View><View style={{ flex: 1 }}><Text style={styles.busNumber}>{bus.busNumber}</Text><Text style={ui.subtitle}>{bus.route}</Text></View>
+                  <Text style={[styles.status, { color: isUnavailable(bus) ? Colors.error : Colors.primary, backgroundColor: isUnavailable(bus) ? '#FCECEF' : Colors.primaryLight }]}>{bus.status?.replace(/_/g, ' ') || 'IDLE'}</Text></View>
+                {isUnavailable(bus) && <Text style={styles.reason}>{bus.unavailabilityReason || 'Temporarily unavailable'}</Text>}
+                <View style={styles.busInfo}><Text style={ui.subtitle}>Driver · {bus.assignedDriver || 'Unassigned'}</Text><Text style={ui.subtitle}>Next turn · {bus.nextTurn || 'Not scheduled'}</Text><Text style={ui.subtitle}>{bus.capacity ?? '—'} seats</Text></View>
+                <View style={styles.busActions}><Button title="Schedule" icon="calendar-outline" secondary onPress={() => navigate('/bus-schedule', bus)} style={{ flex: 1 }} />
+                  <Button title="Agenda" icon="list-outline" secondary onPress={() => navigate('/bus-agenda', bus)} style={{ flex: 1 }} />
+                  {canFinance && <Button title="Net report" icon="stats-chart-outline" secondary onPress={() => navigate('/daily-net', bus)} style={{ flex: 1 }} />}</View>
+              </View>)}
+            </> : <View style={{ gap: 12 }}>
+              <ErrorNotice message={financeError} onRetry={load} />
+              <View style={[ui.card, { backgroundColor: Colors.navy }]}><Text style={styles.heroEyebrow}>LAST 30 DAYS / AUTHORITY PAYABLE</Text><Text style={styles.total}>{financeError ? '—' : money(totals.fees - totals.commissions + totals.penalties)}</Text>
+                <Text style={styles.heroText}>Permit fees − commissions + penalties</Text></View>
+              {!finances.length && !financeError && <EmptyState icon="stats-chart-outline" title="No financial records yet" description="Completed runs will appear in your financial summary." />}
+              {finances.map(item => <View key={item.busId} style={ui.card}><SectionTitle title={item.busNumber} action="Daily report" onPress={() => navigate('/daily-net', { id: item.busId, busNumber: item.busNumber })} />
+                {[['Permit fees', item.permitFeeTotal], ['Commissions (deducted)', item.commissionTotal], ['Penalties', item.penaltyTotal]].map(([label, value]) => <View key={label} style={styles.financeRow}><Text style={ui.subtitle}>{label}</Text><Text style={styles.amount}>{money(value)}</Text></View>)}
+                <View style={[styles.financeRow, styles.netRow]}><Text style={styles.amount}>Net payable</Text><Text style={[styles.amount, { color: Colors.primary }]}>{money(Number(item.permitFeeTotal || 0) - Number(item.commissionTotal || 0) + Number(item.penaltyTotal || 0))}</Text></View></View>)}
+            </View>}
+          </View>}
+      </View>
+
+      <View style={{ flex: wide ? 1 : undefined, gap: 20 }}>
+        {canRequest && <View style={ui.card}><SectionTitle title="Keep things moving" subtitle="Manage changes to your day" />
+          <Button title="New approval request" icon="add-circle-outline" onPress={() => router.push('/new-request')} />
+          <Button title="Track my requests" icon="document-text-outline" secondary onPress={() => router.push('/my-requests')} style={{ marginTop: 10 }} />
+          {summary && <Text style={ui.subtitle}>{summary.pendingRequestCount} pending request{summary.pendingRequestCount === 1 ? '' : 's'} across your fleet</Text>}</View>}
+        <View style={ui.card}><SectionTitle title="Safety at a glance" action="Thresholds" onPress={() => router.push('/(tabs)/settings')} />
+          {policyError && <Text style={ui.subtitle}>{policyLoaded ? 'Showing the last loaded thresholds.' : 'Active thresholds unavailable. Showing defaults.'}</Text>}
+          <Text style={ui.subtitle}>Higher scores mean safer driving. Scores describe individual sensor batches.</Text>
+          <View style={{ flexDirection: 'row', height: 9, borderRadius: 6, overflow: 'hidden', marginVertical: 18 }}>
+            {[['CRITICAL', policy.criticalBelow], ['HIGH', policy.highRiskBelow - policy.criticalBelow], ['CAUTION', policy.cautionBelow - policy.highRiskBelow], ['LOW', 100 - policy.cautionBelow]].map(([id, size]) => <View key={id} style={{ flex: size, backgroundColor: SEVERITIES[id].color }} />)}</View>
+          {[['CRITICAL', `0–${policy.criticalBelow - 1}`], ['HIGH', `${policy.criticalBelow}–${policy.highRiskBelow - 1}`], ['CAUTION', `${policy.highRiskBelow}–${policy.cautionBelow - 1}`], ['LOW', `${policy.cautionBelow}–100`]].map(([id, range]) => <View key={id} style={styles.legendRow}><View style={[styles.legendDot, { backgroundColor: SEVERITIES[id].color }]} /><Text style={[ui.subtitle, { flex: 1, marginTop: 0 }]}>{SEVERITIES[id].label}</Text><Text style={styles.amount}>{range}</Text></View>)}
+        </View>
+        <View><SectionTitle title="Recent activity" subtitle={lastUpdated ? `Last synced ${lastUpdated.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}` : 'Latest notifications'} action="View all" onPress={() => router.push('/(tabs)/alerts')} />
+          <ErrorNotice message={notificationError} onRetry={refreshNotifications} />
+          {notifications.length ? notifications.slice(0, 3).map(n => <NotificationItem key={n.notificationId ?? n.id} notification={n} onRead={markNotificationRead} compact />) : <EmptyState icon="notifications-outline" title="No recent activity" description="Safety alerts and request updates will appear here." />}</View>
+      </View>
+    </View>
+  </ScrollView>;
 }
+
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: Colors.background,
-    paddingHorizontal: 20,
-    paddingTop: 40,
-  },
-  scrollContainer: {
-    paddingBottom: 40,
-  },
-  busSection: {
-    marginBottom: 10,
-  },
-  sectionHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: 10,
-  },
-  changeLink: {
-    color: Colors.primary,
-    fontWeight: '600',
-    fontSize: 14,
-    marginLeft: 6,
-  },
-  browseButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: Colors.primary + '10',
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    borderRadius: 20,
-  },
-  header: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: 20,
-    paddingVertical: 10,
-  },
-  greeting: {
-    fontSize: 22,
-    fontWeight: 'bold',
-    color: Colors.text,
-  },
-  role: {
-    fontSize: 15,
-    color: Colors.primary,
-    marginTop: 4,
-    fontWeight: '600',
-  },
-  logoutButton: {
-    paddingVertical: 8,
-    paddingHorizontal: 15,
-    backgroundColor: '#ffebee',
-    borderRadius: 20,
-  },
-  logoutText: {
-    color: '#d32f2f',
-    fontWeight: 'bold',
-  },
-  sectionTitle: {
-    fontSize: 18,
-    fontWeight: '700',
-    color: Colors.text,
-  },
-  statsContainer: {
-    flexDirection: 'row',
-    gap: 10,
-    marginBottom: 25,
-    justifyContent: 'space-between',
-  },
-  statCard: {
-    flex: 1,
-    backgroundColor: '#FFF',
-    borderRadius: 12,
-    padding: 12,
-    alignItems: 'center',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.05,
-    shadowRadius: 5,
-    elevation: 1,
-  },
-  statNumber: {
-    fontSize: 18,
-    fontWeight: 'bold',
-    color: '#1C1C1E',
-    marginBottom: 4,
-  },
-  statLabel: {
-    fontSize: 10,
-    color: '#8E8E93',
-    fontWeight: '500',
-    textAlign: 'center',
-  },
-  fleetHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: 15,
-  },
-  fleetCount: {
-    fontSize: 14,
-    color: '#8E8E93',
-    fontWeight: '600',
-  },
-  busRowCard: {
-    backgroundColor: '#FFF',
-    borderRadius: 16,
-    padding: 16,
-    marginBottom: 16,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.05,
-    shadowRadius: 8,
-    elevation: 2,
-  },
-  cardHeaderRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-  },
-  busNumText: {
-    fontSize: 18,
-    fontWeight: 'bold',
-    color: '#1C1C1E',
-  },
-  busRouteText: {
-    fontSize: 13,
-    color: '#8E8E93',
-    marginTop: 2,
-  },
-  statusBadge: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-    borderRadius: 12,
-  },
-  activeBadge: {
-    backgroundColor: '#34C75915',
-  },
-  idleBadge: {
-    backgroundColor: '#F2F2F7',
-  },
-  statusDot: {
-    width: 6,
-    height: 6,
-    borderRadius: 3,
-    marginRight: 5,
-  },
-  activeDot: {
-    backgroundColor: '#34C759',
-  },
-  idleDot: {
-    backgroundColor: '#8E8E93',
-  },
-  statusBadgeText: {
-    fontSize: 10,
-    fontWeight: '700',
-  },
-  activeBadgeText: {
-    color: '#34C759',
-  },
-  idleBadgeText: {
-    color: '#8E8E93',
-  },
-  divider: {
-    height: 1,
-    backgroundColor: '#F2F2F7',
-    marginVertical: 12,
-  },
-  busInfoGrid: {
-    gap: 8,
-    marginBottom: 14,
-  },
-  infoRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-  },
-  infoText: {
-    fontSize: 13,
-    color: '#8E8E93',
-  },
-  infoValue: {
-    fontWeight: '600',
-    color: '#1C1C1E',
-  },
-  actionButtonsRow: {
-    flexDirection: 'row',
-    gap: 8,
-    justifyContent: 'space-between',
-  },
-  actionButton: {
-    flex: 1,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 6,
-    paddingVertical: 10,
-    borderRadius: 8,
-    borderWidth: 1,
-  },
-  scheduleButton: {
-    backgroundColor: Colors.primary + '10',
-    borderColor: Colors.primary + '20',
-  },
-  agendaButton: {
-    backgroundColor: Colors.primary + '10',
-    borderColor: Colors.primary + '20',
-  },
-  reportButton: {
-    backgroundColor: '#34C75910',
-    borderColor: '#34C75920',
-  },
-  actionButtonText: {
-    fontSize: 12,
-    fontWeight: '600',
-    color: Colors.primary,
-  },
-  loaderContainer: {
-    flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-    paddingVertical: 60,
-  },
-  loaderText: {
-    marginTop: 10,
-    fontSize: 15,
-    color: '#8E8E93',
-  },
-  emptyContainer: {
-    alignItems: 'center',
-    justifyContent: 'center',
-    padding: 40,
-    backgroundColor: '#FFF',
-    borderRadius: 16,
-    borderStyle: 'dashed',
-    borderWidth: 1,
-    borderColor: '#C7C7CC',
-  },
-  emptyText: {
-    textAlign: 'center',
-    color: '#8E8E93',
-    fontSize: 14,
-    marginTop: 10,
-  },
-  tabContainer: {
-    flexDirection: 'row',
-    gap: 10,
-    marginBottom: 20,
-  },
-  tabButton: {
-    flex: 1,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 8,
-    paddingVertical: 12,
-    borderRadius: 25,
-    backgroundColor: '#FFF',
-    borderWidth: 1,
-    borderColor: Colors.primary + '30',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.03,
-    shadowRadius: 3,
-    elevation: 1,
-  },
-  activeTabButton: {
-    backgroundColor: Colors.primary,
-    borderColor: Colors.primary,
-  },
-  tabButtonText: {
-    fontSize: 14,
-    fontWeight: '700',
-    color: Colors.primary,
-  },
-  activeTabButtonText: {
-    color: '#FFF',
-  },
-  reportRowCard: {
-    backgroundColor: '#FFF',
-    borderRadius: 16,
-    padding: 16,
-    marginBottom: 16,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.05,
-    shadowRadius: 8,
-    elevation: 2,
-  },
-  reportCardHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-  },
-  reportBusNum: {
-    fontSize: 18,
-    fontWeight: 'bold',
-    color: '#1C1C1E',
-  },
-  reportGrandTotal: {
-    fontSize: 16,
-    fontWeight: '800',
-  },
-  breakdownGrid: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    gap: 10,
-    marginVertical: 4,
-  },
-  breakdownCol: {
-    flex: 1,
-    alignItems: 'center',
-  },
-  breakdownLabel: {
-    fontSize: 10,
-    color: '#8E8E93',
-    textTransform: 'uppercase',
-    letterSpacing: 0.5,
-    marginBottom: 4,
-  },
-  breakdownVal: {
-    fontSize: 12,
-    fontWeight: '600',
-    color: '#1C1C1E',
-  },
-  viewDetailedReportButton: {
-    marginTop: 12,
-    paddingTop: 12,
-    borderTopWidth: 1,
-    borderTopColor: '#F2F2F7',
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 6,
-  },
-  viewDetailedReportText: {
-    fontSize: 13,
-    fontWeight: '700',
-    color: Colors.primary,
-  },
-  driverScrollContainer: {
-    paddingBottom: 30,
-  },
-  quickActionsRow: {
-    flexDirection: 'row',
-    gap: 16,
-    marginBottom: 20,
-  },
-  quickActionCard: {
-    flex: 1,
-    backgroundColor: '#FFF',
-    borderRadius: 16,
-    padding: 16,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.05,
-    shadowRadius: 8,
-    elevation: 2,
-    borderWidth: 1,
-    borderColor: '#F2F2F7',
-  },
-  quickActionIconContainer: {
-    width: 48,
-    height: 48,
-    borderRadius: 12,
-    justifyContent: 'center',
-    alignItems: 'center',
-    marginBottom: 12,
-  },
-  quickActionTitle: {
-    fontSize: 16,
-    fontWeight: '700',
-    color: '#1C1C1E',
-    marginBottom: 4,
-  },
-  quickActionDesc: {
-    fontSize: 11,
-    color: '#8E8E93',
-    lineHeight: 14,
-  },
+  heading: { flexDirection: 'row', gap: 12, alignItems: 'center', marginVertical: 6 }, title: { fontSize: 32, fontWeight: '800', color: Colors.text, letterSpacing: -1, marginTop: 7 },
+  refresh: { height: 46, width: 46, borderWidth: 1, borderColor: Colors.border, borderRadius: 14, backgroundColor: '#FFF', justifyContent: 'center', alignItems: 'center' },
+  hero: { flexDirection: 'row', flexWrap: 'wrap', backgroundColor: Colors.navy, borderRadius: 24, padding: 26, gap: 20, alignItems: 'center' },
+  heroEyebrow: { color: '#A5C8BF', fontSize: 10, fontWeight: '700', letterSpacing: 1.8 }, heroTitle: { color: '#FFF', fontSize: 27, lineHeight: 35, letterSpacing: -0.6, fontWeight: '700', marginTop: 12 },
+  heroText: { color: '#BACCD5', fontSize: 13, lineHeight: 22, marginTop: 10, maxWidth: 650 }, heroMeta: { flexDirection: 'row', gap: 8, alignItems: 'center', marginTop: 20 }, heroMetaText: { color: '#C0D8CD', fontSize: 11 },
+  dot: { width: 6, height: 6, borderRadius: 3, backgroundColor: '#82C9A9' }, heroIcon: { padding: 20, borderWidth: 1, borderColor: '#3C5664', borderRadius: 24, backgroundColor: '#213E4D' },
+  columns: { gap: 24 }, urgent: { flexDirection: 'row', alignItems: 'center', gap: 14, backgroundColor: '#FCECEF', padding: 16, borderRadius: 16, borderWidth: 1, borderColor: '#F1C7CF' }, urgentTitle: { color: Colors.error, fontWeight: '700', fontSize: 14 },
+  chips: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 }, search: { flexDirection: 'row', alignItems: 'center', borderRadius: 12, backgroundColor: '#FFF', borderWidth: 1, borderColor: Colors.border, paddingLeft: 14 }, searchInput: { flex: 1, minHeight: 48, padding: 12, fontSize: 14, color: Colors.text },
+  busHeading: { flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap', gap: 12 }, busIcon: { padding: 12, borderRadius: 14, backgroundColor: Colors.primaryLight }, busNumber: { color: Colors.text, fontWeight: '800', fontSize: 18 },
+  status: { fontSize: 10, fontWeight: '700', paddingHorizontal: 10, paddingVertical: 7, borderRadius: 8 }, reason: { color: Colors.error, lineHeight: 20, fontSize: 12, marginTop: 12 },
+  busInfo: { flexDirection: 'row', flexWrap: 'wrap', columnGap: 20, paddingVertical: 14, marginTop: 4, borderBottomWidth: 1, borderBottomColor: Colors.border }, busActions: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginTop: 14 },
+  total: { color: '#FFF', fontSize: 32, fontWeight: '800', marginTop: 12 }, financeRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 16, paddingVertical: 6 }, amount: { fontSize: 13, color: Colors.text, fontWeight: '700' }, netRow: { marginTop: 10, paddingTop: 15, borderTopWidth: 1, borderTopColor: Colors.border },
+  legendRow: { flexDirection: 'row', alignItems: 'center', gap: 10, marginBottom: 12 }, legendDot: { width: 8, height: 8, borderRadius: 4 },
 });
-
-

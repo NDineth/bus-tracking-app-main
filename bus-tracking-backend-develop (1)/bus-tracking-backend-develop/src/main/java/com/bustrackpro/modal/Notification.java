@@ -16,6 +16,8 @@ public class Notification {
     private NotificationCategory category;
     private String createdBy;
     private LocalDateTime createdAt;
+    private Integer safetyScore;
+    private String severity;
 
     @PrePersist
     protected void onCreate() {

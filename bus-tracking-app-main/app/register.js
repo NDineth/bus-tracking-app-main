@@ -4,6 +4,8 @@ import { Link, useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { useAuth } from '../context/AuthContext';
 import Colors from '../constants/Colors';
+import { Button, ErrorNotice } from '../components/UI';
+import { errorMessage } from '../services/api';
 
 export default function RegisterScreen() {
   const [firstName, setFirstName] = useState('');
@@ -18,28 +20,36 @@ export default function RegisterScreen() {
   const [licenseNumber, setLicenseNumber] = useState('');
   const { register } = useAuth();
   const router = useRouter();
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [formError, setFormError] = useState(null);
+  const [registered, setRegistered] = useState(false);
 
   const handleRegister = async () => {
+    if (isSubmitting) return;
+    setFormError(null);
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim())) { setFormError('Enter a valid email address.'); return; }
     if (firstName && lastName && contactNumber && email && password && confirmPassword) {
       if (password !== confirmPassword) {
-        alert("Passwords do not match!");
+        setFormError('Passwords do not match.');
         return;
       }
       
       if (role === 'BUS_DRIVER' && !licenseNumber) {
-        alert("Please enter your driving license number");
+        setFormError('Please enter your driving license number.');
         return;
       }
 
       try {
-        const response = await register(firstName, lastName, contactNumber, email, password, role, licenseNumber);
-        alert(response?.message || "Registration successful!");
-        router.replace('/login');
+        setIsSubmitting(true);
+        await register(firstName.trim(), lastName.trim(), contactNumber.trim(), email.trim(), password, role, licenseNumber.trim());
+        setRegistered(true);
       } catch (error) {
-        alert(error);
+        setFormError(errorMessage(error));
+      } finally {
+        setIsSubmitting(false);
       }
     } else {
-      alert("Please fill in all fields");
+      setFormError('Please fill in all fields.');
     }
   };
 
@@ -48,15 +58,17 @@ export default function RegisterScreen() {
       style={styles.container} 
       behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
     >
-      <ScrollView contentContainerStyle={styles.scrollContainer} showsVerticalScrollIndicator={false}>
+      <ScrollView contentContainerStyle={styles.scrollContainer} showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
         <View style={styles.header}>
           <TouchableOpacity onPress={() => router.back()} style={styles.backButton}>
-            <Text style={styles.backButtonText}>← Back</Text>
+            <Text style={styles.backButtonText}>Back to sign in</Text>
           </TouchableOpacity>
         </View>
 
         <Text style={styles.title}>Create Account</Text>
         <Text style={styles.subtitle}>Sign up to get started</Text>
+        <ErrorNotice message={formError} />
+        {registered && <View style={{ padding: 20, backgroundColor: Colors.primaryLight, borderRadius: 16, marginBottom: 20 }}><Text style={{ color: Colors.primary, marginBottom: 12 }}>Account created. You can now sign in.</Text><Button title="Continue to sign in" onPress={() => router.replace('/login')} /></View>}
 
         <View style={styles.row}>
           <TextInput
@@ -167,9 +179,7 @@ export default function RegisterScreen() {
           />
         )}
 
-        <TouchableOpacity style={styles.button} onPress={handleRegister}>
-          <Text style={styles.buttonText}>Register</Text>
-        </TouchableOpacity>
+        <Button title="Create account" onPress={handleRegister} loading={isSubmitting} disabled={registered} />
 
         <View style={styles.footer}>
           <Text style={styles.footerText}>Already have an account? </Text>
@@ -190,6 +200,9 @@ const styles = StyleSheet.create({
     backgroundColor: Colors.background,
   },
   scrollContainer: {
+    width: '100%',
+    maxWidth: 560,
+    alignSelf: 'center',
     flexGrow: 1,
     paddingHorizontal: 30,
     paddingBottom: 40,

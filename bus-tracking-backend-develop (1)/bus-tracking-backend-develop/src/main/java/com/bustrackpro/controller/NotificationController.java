@@ -4,6 +4,7 @@ import com.bustrackpro.dto.response.NotificationResponseDTO;
 import com.bustrackpro.service.notification.NotificationService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
@@ -11,6 +12,7 @@ import java.util.List;
 @RestController
 @RequestMapping("/notifications")
 @RequiredArgsConstructor
+@PreAuthorize("#receiverId == principal.id or hasAuthority('ADMIN')")
 public class NotificationController {
 
     private final NotificationService notificationService;

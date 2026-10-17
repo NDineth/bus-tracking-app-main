@@ -30,13 +30,13 @@ export default function AllowedBusesScreen() {
       >
         <View style={styles.cardHeader}>
           <View style={styles.iconContainer}>
-            <Ionicons name="bus" size={24} color="#007AFF" />
+            <Ionicons name="bus" size={24} color="#176B60" />
           </View>
           <View style={styles.headerText}>
             <Text style={styles.busNumber}>{item.busNumber}</Text>
-            <View style={[styles.statusBadge, { backgroundColor: item.status === 'IDLE' ? '#34C75920' : '#FF950020' }]}>
-              <View style={[styles.statusDot, { backgroundColor: item.status === 'IDLE' ? '#34C759' : '#FF9500' }]} />
-              <Text style={[styles.statusText, { color: item.status === 'IDLE' ? '#34C759' : '#FF9500' }]}>
+            <View style={[styles.statusBadge, { backgroundColor: item.status === 'IDLE' ? '#176B6020' : '#9A650A20' }]}>
+              <View style={[styles.statusDot, { backgroundColor: item.status === 'IDLE' ? '#176B60' : '#9A650A' }]} />
+              <Text style={[styles.statusText, { color: item.status === 'IDLE' ? '#176B60' : '#9A650A' }]}>
                 {item.status}
               </Text>
             </View>
@@ -45,22 +45,22 @@ export default function AllowedBusesScreen() {
 
         <View style={styles.cardBody}>
           <View style={styles.infoRow}>
-            <Ionicons name="map-outline" size={18} color="#8E8E93" />
+            <Ionicons name="map-outline" size={18} color="#617381" />
             <Text style={styles.infoText} numberOfLines={1}>{item.route}</Text>
           </View>
           <View style={styles.infoRow}>
-            <Ionicons name="person-outline" size={18} color="#8E8E93" />
+            <Ionicons name="person-outline" size={18} color="#617381" />
             <Text style={styles.infoText}>Driver: {item.assignedDriver || 'None'}</Text>
           </View>
           <View style={styles.infoRow}>
-            <Ionicons name="time-outline" size={18} color="#8E8E93" />
+            <Ionicons name="time-outline" size={18} color="#617381" />
             <Text style={styles.infoText}>Next Turn: {item.nextTurn || 'N/A'}</Text>
           </View>
         </View>
         
         <View style={styles.cardFooter}>
           <Text style={styles.viewDetails}>View Details</Text>
-          <Ionicons name="chevron-forward" size={16} color="#007AFF" />
+          <Ionicons name="chevron-forward" size={16} color="#176B60" />
         </View>
       </TouchableOpacity>
     );
@@ -78,7 +78,7 @@ export default function AllowedBusesScreen() {
 
       {isLoading && allBuses.length === 0 ? (
         <View style={styles.centerContainer}>
-          <ActivityIndicator size="large" color="#007AFF" />
+          <ActivityIndicator size="large" color="#176B60" />
         </View>
       ) : (
         <FlatList
@@ -106,7 +106,7 @@ export default function AllowedBusesScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#F8F9FB',
+    backgroundColor: '#F4F6F8',
   },
   header: {
     flexDirection: 'row',
@@ -127,6 +127,9 @@ const styles = StyleSheet.create({
     color: '#000',
   },
   listContent: {
+    width: '100%',
+    maxWidth: 1000,
+    alignSelf: 'center',
     padding: 16,
   },
   busCard: {
@@ -148,7 +151,7 @@ const styles = StyleSheet.create({
     width: 48,
     height: 48,
     borderRadius: 14,
-    backgroundColor: '#007AFF10',
+    backgroundColor: '#176B6010',
     justifyContent: 'center',
     alignItems: 'center',
     marginRight: 16,
@@ -160,7 +163,7 @@ const styles = StyleSheet.create({
   busNumber: {
     fontSize: 18,
     fontWeight: '700',
-    color: '#1C1C1E',
+    color: '#172D3B',
     marginBottom: 4,
   },
   statusBadge: {
@@ -184,7 +187,7 @@ const styles = StyleSheet.create({
   },
   cardBody: {
     borderTopWidth: 1,
-    borderTopColor: '#F2F2F7',
+    borderTopColor: '#F0F4F5',
     paddingTop: 16,
     marginBottom: 16,
   },
@@ -207,7 +210,7 @@ const styles = StyleSheet.create({
   viewDetails: {
     fontSize: 14,
     fontWeight: '600',
-    color: '#007AFF',
+    color: '#176B60',
     marginRight: 4,
   },
   centerContainer: {
@@ -218,6 +221,6 @@ const styles = StyleSheet.create({
   },
   emptyText: {
     fontSize: 16,
-    color: '#8E8E93',
+    color: '#617381',
   }
 });

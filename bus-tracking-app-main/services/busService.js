@@ -1,22 +1,4 @@
-import axios from 'axios';
-import Config from '../constants/Config';
-import * as SecureStore from 'expo-secure-store';
-
-const API = axios.create({
-  baseURL: Config.API_BASE_URL,
-  headers: {
-    'Content-Type': 'application/json',
-  },
-});
-
-// Interceptor to add token to requests
-API.interceptors.request.use(async (config) => {
-  const token = await SecureStore.getItemAsync('token');
-  if (token) {
-    config.headers.Authorization = `Bearer ${token}`;
-  }
-  return config;
-});
+import API from './api';
 
 const getColomboNow = () => {
   const colomboOffset = 5.5 * 60 * 60 * 1000;
@@ -58,9 +40,8 @@ export const getAllBuses = async () => {
       const assignedDriver = bus.driver
         ? `${bus.driver.firstName} ${bus.driver.lastName}`
         : 'None';
-      const status = bus.driver 
-        ? bus.driver.status || 'IDLE' 
-        : 'IDLE';
+      const status = bus.availabilityStatus === 'UNAVAILABLE' ? 'UNAVAILABLE'
+        : bus.status || bus.driver?.status || 'IDLE';
 
       return {
         id: bus.id,
@@ -69,6 +50,8 @@ export const getAllBuses = async () => {
         route: bus.route || 'No Active Route',
         capacity: bus.capacity,
         status: status,
+        availabilityStatus: bus.availabilityStatus,
+        unavailabilityReason: bus.unavailabilityReason,
         assignedDriver,
         driver: bus.driver,
         nextTurn: bus.nextTurn || 'N/A',
@@ -85,8 +68,7 @@ export const getAssignedBusByDriverId = async (driverId) => {
   try {
     const buses = await getAllBuses();
     const assigned = buses.find(bus => 
-      bus.id === driverId || 
-      (bus.driver && bus.driver.id === driverId)
+      bus.driver && String(bus.driver.id) === String(driverId)
     );
     return assigned || null;
   } catch (error) {
@@ -156,7 +138,7 @@ export const getRouteSchedule = async (route, busNumber) => {
       let status = 'UPCOMING';
       if (item.status === 'COMPLETED' || item.status === 'TURN_LOSS') {
         status = 'PAST';
-      } else if (item.status === 'ACTIVE' || item.status === 'IN_PROGRESS' || item.status === 'SCHEDULED') {
+      } else if (item.status === 'ACTIVE' || item.status === 'IN_PROGRESS') {
         status = 'CURRENT';
       }
       
@@ -224,13 +206,13 @@ export const getBusFutureAgenda = async (busNumber) => {
             id: item.id || `${d.dateStr}-${index}`,
             date: d.label,
             time: item.departureTime,
-            route: item.tripLabel || 'Colombo - Kandy (Express)',
+            route: item.tripLabel || 'Route not assigned',
             turn: index + 1,
             status
           });
         });
       } catch (e) {
-        // Suppress errors for missing days
+        throw e;
       }
     }
     

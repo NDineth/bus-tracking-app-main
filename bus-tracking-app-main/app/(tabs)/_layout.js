@@ -1,63 +1,19 @@
+import React from 'react';
 import { Tabs } from 'expo-router';
-import Colors from '../../constants/Colors';
+import { View, Text } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { View, Text, TouchableOpacity, StyleSheet } from 'react-native';
 import { useNotifications } from '../../context/NotificationContext';
-import { useRouter } from 'expo-router';
+import Colors from '../../constants/Colors';
 
 export default function TabLayout() {
   const { unreadCount } = useNotifications();
-  const router = useRouter();
-
-  return (
-    <Tabs
-      screenOptions={{
-        headerShown: true,
-        tabBarActiveTintColor: Colors.primary,
-      }}
-    >
-      <Tabs.Screen
-        name="home"
-        options={{
-          title: 'Dashboard',
-          tabBarLabel: 'Home',
-          tabBarIcon: ({ color }) => <Ionicons name="home-outline" size={24} color={color} />,
-          headerRight: () => (
-            <TouchableOpacity 
-              onPress={() => router.push('/notifications')}
-              style={{ marginRight: 16 }}
-            >
-              <Ionicons name="notifications-outline" size={24} color="#000" />
-              {unreadCount > 0 && (
-                <View style={styles.badge}>
-                  <Text style={styles.badgeText}>{unreadCount > 99 ? '99+' : unreadCount}</Text>
-                </View>
-              )}
-            </TouchableOpacity>
-          ),
-        }}
-      />
-    </Tabs>
-  );
+  return <Tabs screenOptions={{ headerStyle: { backgroundColor: '#FFF' }, headerShadowVisible: false,
+    headerTitleStyle: { color: Colors.text, fontSize: 16, fontWeight: '800' },
+    headerTitle: () => <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}><View style={{ padding: 8, borderRadius: 10, backgroundColor: Colors.primary }}><Ionicons name="bus" size={18} color="#FFF" /></View><Text style={{ fontSize: 15, fontWeight: '800', letterSpacing: 0.7, color: Colors.navy }}>BUS TRACK <Text style={{ color: Colors.primary }}>PRO</Text></Text></View>,
+    tabBarActiveTintColor: Colors.primary, tabBarInactiveTintColor: Colors.textSecondary,
+    tabBarStyle: { borderTopColor: Colors.border, backgroundColor: '#FFF', minHeight: 66, paddingTop: 9 }, tabBarLabelStyle: { fontSize: 11, fontWeight: '600', marginTop: 2 } }}>
+    <Tabs.Screen name="home" options={{ title: 'Overview', tabBarIcon: ({ color }) => <Ionicons name="grid-outline" size={22} color={color} /> }} />
+    <Tabs.Screen name="alerts" options={{ title: 'Alerts', tabBarBadge: unreadCount || undefined, tabBarBadgeStyle: { backgroundColor: Colors.error, fontSize: 10 }, tabBarIcon: ({ color }) => <Ionicons name="notifications-outline" size={22} color={color} /> }} />
+    <Tabs.Screen name="settings" options={{ title: 'Settings', tabBarIcon: ({ color }) => <Ionicons name="options-outline" size={22} color={color} /> }} />
+  </Tabs>;
 }
-const styles = StyleSheet.create({
-  badge: {
-    position: 'absolute',
-    right: -6,
-    top: -4,
-    backgroundColor: '#FF3B30',
-    borderRadius: 10,
-    minWidth: 18,
-    height: 18,
-    justifyContent: 'center',
-    alignItems: 'center',
-    paddingHorizontal: 4,
-    borderWidth: 2,
-    borderColor: '#FFF',
-  },
-  badgeText: {
-    color: '#FFF',
-    fontSize: 10,
-    fontWeight: '700',
-  }
-});

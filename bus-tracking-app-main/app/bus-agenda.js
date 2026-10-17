@@ -1,16 +1,21 @@
+import { SafeAreaView } from 'react-native-safe-area-context';
 import React, { useEffect, useState } from 'react';
-import { View, Text, StyleSheet, SectionList, TouchableOpacity, ActivityIndicator, SafeAreaView, StatusBar } from 'react-native';
+import { View, Text, StyleSheet, SectionList, TouchableOpacity, ActivityIndicator, StatusBar } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { getBusFutureAgenda } from '../services/busService';
 import Colors from '../constants/Colors';
 import { showError } from '../utils/alertService';
+import { ErrorNotice, Metric, ui } from '../components/UI';
+import { errorMessage } from '../services/api';
 
 
 export default function BusAgendaScreen() {
   const { busNumber } = useLocalSearchParams();
   const [agenda, setAgenda] = useState([]);
   const [isLoading, setIsLoading] = useState(true);
+  const [error, setError] = useState(null);
+  const [reload, setReload] = useState(0);
   const router = useRouter();
 
   useEffect(() => {
@@ -18,15 +23,16 @@ export default function BusAgendaScreen() {
       try {
         const data = await getBusFutureAgenda(busNumber);
         setAgenda(data);
+        setError(null);
       } catch (error) {
-        showError('Agenda', 'Failed to fetch agenda');
+        setError(errorMessage(error));
       } finally {
         setIsLoading(false);
       }
     };
 
     fetchAgenda();
-  }, [busNumber]);
+  }, [busNumber, reload]);
 
   // Group agenda by date for SectionList
   const groupedAgenda = agenda.reduce((acc, item) => {
@@ -54,7 +60,7 @@ export default function BusAgendaScreen() {
 
         <View style={styles.routeInfo}>
           <View style={styles.routeHeader}>
-            <Ionicons name="map-outline" size={16} color={isPast ? '#8E8E93' : Colors.primary} />
+            <Ionicons name="map-outline" size={16} color={isPast ? '#617381' : Colors.primary} />
             <Text style={[styles.routeText, isPast && styles.pastText]} numberOfLines={1}>
               {item.route}
             </Text>
@@ -95,7 +101,7 @@ export default function BusAgendaScreen() {
           <Ionicons name="arrow-back" size={24} color="#000" />
         </TouchableOpacity>
         <View style={styles.headerTitleContainer}>
-          <Text style={styles.headerTitle}>Bus Agenda</Text>
+          <Text style={styles.headerTitle}>3-Day Agenda</Text>
           <Text style={styles.headerSubtitle}>{busNumber}</Text>
         </View>
         <View style={{ width: 44 }} />
@@ -113,6 +119,9 @@ export default function BusAgendaScreen() {
           renderItem={renderItem}
           renderSectionHeader={renderSectionHeader}
           contentContainerStyle={styles.listContent}
+          refreshing={isLoading}
+          onRefresh={() => setReload(value => value + 1)}
+          ListHeaderComponent={<View style={{ marginTop: 16, gap: 12 }}><ErrorNotice message={error} onRetry={() => setReload(value => value + 1)} /><View style={ui.metrics}><Metric label="Assigned turns" value={agenda.length} icon="calendar-outline" /><Metric label="Upcoming turns" value={agenda.filter(item => item.status === 'UPCOMING').length} icon="time-outline" /></View></View>}
           stickySectionHeadersEnabled={false}
           ListEmptyComponent={
             <View style={styles.emptyContainer}>
@@ -129,7 +138,7 @@ export default function BusAgendaScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#F8F9FB',
+    backgroundColor: '#F4F6F8',
   },
   header: {
     flexDirection: 'row',
@@ -144,9 +153,11 @@ const styles = StyleSheet.create({
   backButton: {
     padding: 8,
     borderRadius: 12,
-    backgroundColor: '#F2F2F7',
+    backgroundColor: '#F0F4F5',
   },
   headerTitleContainer: {
+    flex: 1,
+    paddingHorizontal: 12,
     alignItems: 'center',
   },
   headerTitle: {
@@ -161,6 +172,9 @@ const styles = StyleSheet.create({
     marginTop: 2,
   },
   listContent: {
+    width: '100%',
+    maxWidth: 1000,
+    alignSelf: 'center',
     paddingHorizontal: 16,
     paddingBottom: 40,
   },
@@ -172,7 +186,7 @@ const styles = StyleSheet.create({
   sectionTitle: {
     fontSize: 14,
     fontWeight: '800',
-    color: '#8E8E93',
+    color: '#617381',
     textTransform: 'uppercase',
     letterSpacing: 1,
   },
@@ -191,18 +205,18 @@ const styles = StyleSheet.create({
   },
   pastCard: {
     opacity: 0.6,
-    backgroundColor: '#F2F2F7',
+    backgroundColor: '#F0F4F5',
   },
   timeInfo: {
     width: 85,
     borderRightWidth: 1,
-    borderRightColor: '#F2F2F7',
+    borderRightColor: '#F0F4F5',
     paddingRight: 12,
   },
   timeText: {
     fontSize: 16,
     fontWeight: '700',
-    color: '#1C1C1E',
+    color: '#172D3B',
   },
   turnBadge: {
     backgroundColor: Colors.primary + '15',
@@ -229,12 +243,12 @@ const styles = StyleSheet.create({
   routeText: {
     fontSize: 15,
     fontWeight: '600',
-    color: '#1C1C1E',
+    color: '#172D3B',
     marginLeft: 8,
     flex: 1,
   },
   pastText: {
-    color: '#8E8E93',
+    color: '#617381',
   },
   currentIndicator: {
     flexDirection: 'row',
@@ -245,13 +259,13 @@ const styles = StyleSheet.create({
     width: 6,
     height: 6,
     borderRadius: 3,
-    backgroundColor: '#34C759',
+    backgroundColor: '#176B60',
     marginRight: 6,
   },
   currentLabel: {
     fontSize: 10,
     fontWeight: '800',
-    color: '#34C759',
+    color: '#176B60',
   },
   viewRouteButton: {
     padding: 4,
@@ -264,7 +278,7 @@ const styles = StyleSheet.create({
   loadingText: {
     marginTop: 12,
     fontSize: 16,
-    color: '#8E8E93',
+    color: '#617381',
   },
   emptyContainer: {
     marginTop: 100,
@@ -274,7 +288,7 @@ const styles = StyleSheet.create({
   emptyText: {
     marginTop: 16,
     fontSize: 16,
-    color: '#8E8E93',
+    color: '#617381',
     textAlign: 'center',
     paddingHorizontal: 40,
   }

@@ -1,5 +1,6 @@
+import { showAlert } from '../utils/alertService';
 import React, { useState, useEffect } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, ScrollView, ActivityIndicator, Modal, Alert, TextInput, Keyboard, TouchableWithoutFeedback } from 'react-native';
+import { View, Text, StyleSheet, TouchableOpacity, ScrollView, ActivityIndicator, Modal, TextInput, Keyboard, TouchableWithoutFeedback } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
@@ -66,7 +67,7 @@ export default function NewRequestScreen() {
           setSelectedBus(filteredBuses[0]); // Default to first bus
         }
       } catch (error) {
-        Alert.alert('Error', 'Failed to load assigned buses. Please try again.');
+        showAlert('Error', 'Failed to load assigned buses. Please try again.');
       } finally {
         setIsLoadingBuses(false);
       }
@@ -110,7 +111,7 @@ export default function NewRequestScreen() {
       }
     } else {
       if (startDate && selected < startDate) {
-        Alert.alert('Invalid Date', 'End Date cannot be before Start Date.');
+        showAlert('Invalid Date', 'End Date cannot be before Start Date.');
         return;
       }
       setEndDate(selected);
@@ -129,7 +130,7 @@ export default function NewRequestScreen() {
     } else {
       if (startDate && endDate && startDate.toDateString() === endDate.toDateString() && startTime) {
         if (timeString <= startTime) {
-          Alert.alert('Invalid Time', 'End Time must be after Start Time on the same day.');
+          showAlert('Invalid Time', 'End Time must be after Start Time on the same day.');
           return;
         }
       }
@@ -140,7 +141,7 @@ export default function NewRequestScreen() {
 
   const handleSubmit = async () => {
     if (!selectedBus) {
-      Alert.alert('Validation Error', 'Please select a bus.');
+      showAlert('Validation Error', 'Please select a bus.');
       return;
     }
 
@@ -152,13 +153,13 @@ export default function NewRequestScreen() {
 
     if (approvalType === 'EMERGENCY') {
       if (!emergencyType) {
-        Alert.alert('Validation Error', 'Please select an emergency reason.');
+        showAlert('Validation Error', 'Please select an emergency reason.');
         return;
       }
       payload.emergencyType = emergencyType;
     } else {
       if (!startDate || !endDate || !startTime || !endTime) {
-        Alert.alert('Validation Error', 'Please fill in all date and time fields.');
+        showAlert('Validation Error', 'Please fill in all date and time fields.');
         return;
       }
       
@@ -184,7 +185,7 @@ export default function NewRequestScreen() {
     try {
       setIsSubmitting(true);
       await submitApprovalRequest(payload);
-      Alert.alert(
+      showAlert(
         'Success',
         'Approval request submitted successfully.',
         [
@@ -195,7 +196,7 @@ export default function NewRequestScreen() {
         ]
       );
     } catch (error) {
-      Alert.alert('Submission Failed', error);
+      showAlert('Submission Failed', error);
     } finally {
       setIsSubmitting(false);
     }
@@ -310,7 +311,7 @@ export default function NewRequestScreen() {
               </View>
             </View>
             {buses.length > 1 && (
-              <Ionicons name="chevron-down" size={20} color="#8E8E93" />
+              <Ionicons name="chevron-down" size={20} color="#617381" />
             )}
           </TouchableOpacity>
         )}
@@ -347,12 +348,12 @@ export default function NewRequestScreen() {
                 style={[
                   styles.emergencyCard, 
                   emergencyType === 'ACCIDENT' && styles.emergencyCardActive,
-                  { borderColor: emergencyType === 'ACCIDENT' ? '#FF3B30' : '#E5E5EA' }
+                  { borderColor: emergencyType === 'ACCIDENT' ? '#BD3347' : '#E5E5EA' }
                 ]}
                 onPress={() => setEmergencyType('ACCIDENT')}
               >
-                <View style={[styles.emergencyIconContainer, { backgroundColor: '#FF3B3015' }]}>
-                  <Ionicons name="car-sport" size={28} color="#FF3B30" />
+                <View style={[styles.emergencyIconContainer, { backgroundColor: '#BD334715' }]}>
+                  <Ionicons name="car-sport" size={28} color="#BD3347" />
                 </View>
                 <Text style={styles.emergencyTitle}>Accident</Text>
               </TouchableOpacity>
@@ -361,12 +362,12 @@ export default function NewRequestScreen() {
                 style={[
                   styles.emergencyCard, 
                   emergencyType === 'BREAKDOWN' && styles.emergencyCardActive,
-                  { borderColor: emergencyType === 'BREAKDOWN' ? '#FF9500' : '#E5E5EA' }
+                  { borderColor: emergencyType === 'BREAKDOWN' ? '#9A650A' : '#E5E5EA' }
                 ]}
                 onPress={() => setEmergencyType('BREAKDOWN')}
               >
-                <View style={[styles.emergencyIconContainer, { backgroundColor: '#FF950015' }]}>
-                  <Ionicons name="construct" size={28} color="#FF9500" />
+                <View style={[styles.emergencyIconContainer, { backgroundColor: '#9A650A15' }]}>
+                  <Ionicons name="construct" size={28} color="#9A650A" />
                 </View>
                 <Text style={styles.emergencyTitle}>Breakdown</Text>
               </TouchableOpacity>
@@ -479,7 +480,7 @@ export default function NewRequestScreen() {
                     <Text style={styles.busItemRoute}>{bus.route}</Text>
                   </View>
                   {selectedBus?.id === bus.id && (
-                    <Ionicons name="checkmark-circle" size={22} color="#34C759" />
+                    <Ionicons name="checkmark-circle" size={22} color="#176B60" />
                   )}
                 </TouchableOpacity>
               ))}
@@ -610,7 +611,7 @@ export default function NewRequestScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#F8F9FB',
+    backgroundColor: '#F4F6F8',
   },
   header: {
     flexDirection: 'row',
@@ -631,6 +632,9 @@ const styles = StyleSheet.create({
     color: '#000',
   },
   scrollContainer: {
+    width: '100%',
+    maxWidth: 800,
+    alignSelf: 'center',
     padding: 20,
     paddingBottom: 40,
   },
@@ -644,7 +648,7 @@ const styles = StyleSheet.create({
   subLabel: {
     fontSize: 13,
     fontWeight: '500',
-    color: '#8E8E93',
+    color: '#617381',
     marginBottom: 6,
   },
   loadingContainer: {
@@ -680,11 +684,11 @@ const styles = StyleSheet.create({
   selectedBusNumber: {
     fontSize: 16,
     fontWeight: '700',
-    color: '#1C1C1E',
+    color: '#172D3B',
   },
   selectedBusRoute: {
     fontSize: 13,
-    color: '#8E8E93',
+    color: '#617381',
     marginTop: 2,
   },
   segmentContainer: {
@@ -725,7 +729,7 @@ const styles = StyleSheet.create({
   sectionHeading: {
     fontSize: 16,
     fontWeight: '700',
-    color: '#1C1C1E',
+    color: '#172D3B',
     marginBottom: 16,
   },
   emergencyGrid: {
@@ -759,7 +763,7 @@ const styles = StyleSheet.create({
   emergencyTitle: {
     fontSize: 12,
     fontWeight: '700',
-    color: '#1C1C1E',
+    color: '#172D3B',
     textAlign: 'center',
   },
   gridRow: {
@@ -783,7 +787,7 @@ const styles = StyleSheet.create({
   pickerButtonText: {
     fontSize: 14,
     fontWeight: '600',
-    color: '#1C1C1E',
+    color: '#172D3B',
   },
   submitButton: {
     backgroundColor: Colors.primary,
@@ -831,7 +835,7 @@ const styles = StyleSheet.create({
   modalTitle: {
     fontSize: 18,
     fontWeight: '700',
-    color: '#1C1C1E',
+    color: '#172D3B',
   },
   busListContainer: {
     marginVertical: 10,
@@ -841,7 +845,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     paddingVertical: 14,
     borderBottomWidth: 1,
-    borderBottomColor: '#F2F2F7',
+    borderBottomColor: '#F0F4F5',
   },
   busItemTextContainer: {
     flex: 1,
@@ -850,11 +854,11 @@ const styles = StyleSheet.create({
   busItemNumber: {
     fontSize: 16,
     fontWeight: '600',
-    color: '#1C1C1E',
+    color: '#172D3B',
   },
   busItemRoute: {
     fontSize: 13,
-    color: '#8E8E93',
+    color: '#617381',
     marginTop: 2,
   },
   calendarCard: {
@@ -878,7 +882,7 @@ const styles = StyleSheet.create({
   calendarTitle: {
     fontSize: 16,
     fontWeight: '700',
-    color: '#1C1C1E',
+    color: '#172D3B',
   },
   calendarWeekdays: {
     flexDirection: 'row',
@@ -890,7 +894,7 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     fontSize: 12,
     fontWeight: '600',
-    color: '#8E8E93',
+    color: '#617381',
   },
   calendarGrid: {
     flexDirection: 'row',
@@ -922,7 +926,7 @@ const styles = StyleSheet.create({
   calendarDayText: {
     fontSize: 14,
     fontWeight: '600',
-    color: '#1C1C1E',
+    color: '#172D3B',
   },
   calendarDayTodayText: {
     color: Colors.primary,
@@ -933,7 +937,7 @@ const styles = StyleSheet.create({
     fontWeight: '700',
   },
   calendarDayDisabledText: {
-    color: '#8E8E93',
+    color: '#617381',
   },
   calendarCloseButton: {
     marginTop: 16,
@@ -943,7 +947,7 @@ const styles = StyleSheet.create({
   calendarCloseButtonText: {
     fontSize: 15,
     fontWeight: '600',
-    color: '#FF3B30',
+    color: '#BD3347',
   },
   timePickerCard: {
     backgroundColor: '#FFF',
@@ -961,7 +965,7 @@ const styles = StyleSheet.create({
   timePickerTitle: {
     fontSize: 16,
     fontWeight: '700',
-    color: '#1C1C1E',
+    color: '#172D3B',
     marginBottom: 20,
   },
   timePickerRow: {
@@ -974,18 +978,18 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   timeInput: {
-    backgroundColor: '#F2F2F7',
+    backgroundColor: '#F0F4F5',
     borderRadius: 12,
     width: 64,
     height: 64,
     textAlign: 'center',
     fontSize: 28,
     fontWeight: '700',
-    color: '#1C1C1E',
+    color: '#172D3B',
   },
   timeLabel: {
     fontSize: 11,
-    color: '#8E8E93',
+    color: '#617381',
     fontWeight: '600',
     textTransform: 'uppercase',
     marginBottom: 6,
@@ -993,7 +997,7 @@ const styles = StyleSheet.create({
   timeColon: {
     fontSize: 32,
     fontWeight: '700',
-    color: '#1C1C1E',
+    color: '#172D3B',
     marginHorizontal: 16,
     paddingBottom: 4,
   },
@@ -1009,10 +1013,10 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   timeCancelButton: {
-    backgroundColor: '#F2F2F7',
+    backgroundColor: '#F0F4F5',
   },
   timeCancelButtonText: {
-    color: '#FF3B30',
+    color: '#BD3347',
     fontSize: 14,
     fontWeight: '700',
   },

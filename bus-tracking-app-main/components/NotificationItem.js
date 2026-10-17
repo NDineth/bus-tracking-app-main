@@ -1,129 +1,60 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { View, Text, StyleSheet, TouchableOpacity } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
+import { useAlertPolicy } from '../context/AlertPolicyContext';
+import { alertSeverity, safetyScore, isUnread, notificationId, SEVERITIES } from '../utils/alertPolicy';
+import { errorMessage } from '../services/api';
+import { Button, ui } from './UI';
+import Colors from '../constants/Colors';
 
-const NotificationItem = ({ notification, onRead }) => {
-  const isRead = notification.read !== undefined ? notification.read : notification.isRead;
+export default function NotificationItem({ notification, onRead, compact = false }) {
+  const { policy } = useAlertPolicy();
   const router = useRouter();
-
-  const getIcon = (category) => {
-    switch (category) {
-      case 'BUS_DELAY': return 'time-outline';
-      case 'ROUTE_CHANGE': return 'map-outline';
-      case 'URGENT': return 'alert-circle-outline';
-      default: return 'notifications-outline';
-    }
+  const unread = isUnread(notification);
+  const severity = alertSeverity(notification, policy);
+  const risk = SEVERITIES[severity];
+  const score = safetyScore(notification);
+  const [expanded, setExpanded] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState(null);
+  const date = new Date(notification.createdAt);
+  const time = Number.isNaN(date.getTime()) ? 'Time unavailable' : date.toLocaleString('en-LK', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' });
+  const approval = /approval request/i.test(notification.title || '');
+  const markRead = async () => {
+    setBusy(true); setError(null);
+    try { await onRead(notificationId(notification)); }
+    catch (e) { setError(errorMessage(e)); }
+    finally { setBusy(false); }
   };
-
-  const getIconColor = (category) => {
-    switch (category) {
-      case 'BUS_DELAY': return '#FF9500';
-      case 'ROUTE_CHANGE': return '#007AFF';
-      case 'URGENT': return '#FF3B30';
-      default: return '#5856D6';
-    }
-  };
-
-  const formatTime = (dateString) => {
-    const date = new Date(dateString);
-    return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-  };
-
-  const handlePress = () => {
-    if (!isRead) {
-      onRead(notification.notificationId);
-    }
-    if (notification.title && notification.title.toLowerCase().includes('approval request')) {
-      router.push('/my-requests');
-    }
-  };
-
-  return (
-    <TouchableOpacity 
-      style={[styles.container, !isRead && styles.unreadContainer]} 
-      onPress={handlePress}
-      activeOpacity={0.7}
-    >
-      <View style={[styles.iconBadge, { backgroundColor: getIconColor(notification.category) + '20' }]}>
-        <Ionicons name={getIcon(notification.category)} size={24} color={getIconColor(notification.category)} />
-      </View>
-      
-      <View style={styles.content}>
-        <View style={styles.header}>
-          <Text style={[styles.title, !isRead && styles.unreadText]}>{notification.title}</Text>
-          <Text style={styles.time}>{formatTime(notification.createdAt)}</Text>
-        </View>
-        <Text style={styles.body} numberOfLines={2}>{notification.body}</Text>
-      </View>
-
-      {!isRead && <View style={styles.unreadIndicator} />}
+  return <View style={[styles.card, unread && { borderLeftColor: risk.color, borderLeftWidth: 4 }]}>
+    <TouchableOpacity accessibilityRole="button" accessibilityLabel={`${notification.title}. ${risk.label}. ${unread ? 'Unread' : 'Read'}. Show details.`}
+      accessibilityState={{ expanded }} onPress={() => setExpanded(!expanded)} style={styles.top}>
+      <View style={[styles.icon, { backgroundColor: risk.background }]}><Ionicons name={risk.icon} size={22} color={risk.color} /></View>
+      <View style={{ flex: 1 }}><View style={styles.meta}><Text style={[styles.badge, { color: risk.color, backgroundColor: risk.background }]}>{risk.label}</Text>
+        {unread && <Text style={styles.unread}>NEW</Text>}</View><Text style={styles.title}>{notification.title || 'Notification'}</Text>
+        <Text style={styles.time}>{time}</Text></View><Ionicons name={expanded ? 'chevron-up' : 'chevron-down'} size={18} color={Colors.muted} />
     </TouchableOpacity>
-  );
-};
-
+    <Text style={styles.body} numberOfLines={expanded ? undefined : compact ? 2 : 3}>{notification.body || 'No additional details.'}</Text>
+    {score !== null && <View style={styles.scoreRow}><Text style={styles.scoreLabel}>Safety score</Text><View style={styles.track}><View style={{ width: `${score}%`, height: 6, backgroundColor: risk.color, borderRadius: 4 }} /></View><Text style={[styles.score, { color: risk.color }]}>{score}/100</Text></View>}
+    {expanded && <View style={styles.details}>
+      <Text style={ui.subtitle}>{severity === 'CRITICAL' ? 'Check on the bus, driver and passengers immediately. Follow your emergency response procedure.'
+        : severity === 'HIGH' ? 'Review this event with the driver and check the bus before the next departure.'
+        : severity === 'CAUTION' ? 'Review the driving pattern and monitor upcoming events.' : 'Review the details and any related request updates.'}</Text>
+      {score !== null && <Text style={ui.subtitle}>This score applies to one sensor batch. Marking an alert read does not resolve the underlying incident.</Text>}
+      {notification.severity && <Text style={ui.subtitle}>Severity was recorded when this alert was generated.</Text>}
+      <View style={styles.actions}>{unread && <Button title="Mark as read" icon="checkmark-outline" loading={busy} secondary onPress={markRead} />}
+        {approval && <Button title="View requests" icon="document-text-outline" onPress={() => router.push('/my-requests')} />}
+      </View>
+    </View>}
+    {error && <Text accessibilityRole="alert" style={{ color: Colors.error, marginTop: 10 }}>{error}</Text>}
+  </View>;
+}
 const styles = StyleSheet.create({
-  container: {
-    flexDirection: 'row',
-    padding: 16,
-    backgroundColor: '#FFFFFF',
-    borderRadius: 16,
-    marginBottom: 12,
-    alignItems: 'center',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.05,
-    shadowRadius: 8,
-    elevation: 2,
-  },
-  unreadContainer: {
-    backgroundColor: '#F8F9FF',
-    borderLeftWidth: 4,
-    borderLeftColor: '#007AFF',
-  },
-  iconBadge: {
-    width: 48,
-    height: 48,
-    borderRadius: 12,
-    justifyContent: 'center',
-    alignItems: 'center',
-    marginRight: 16,
-  },
-  content: {
-    flex: 1,
-  },
-  header: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: 4,
-  },
-  title: {
-    fontSize: 16,
-    fontWeight: '600',
-    color: '#1C1C1E',
-    flex: 1,
-  },
-  unreadText: {
-    color: '#000000',
-  },
-  time: {
-    fontSize: 12,
-    color: '#8E8E93',
-    marginLeft: 8,
-  },
-  body: {
-    fontSize: 14,
-    color: '#3A3A3C',
-    lineHeight: 20,
-  },
-  unreadIndicator: {
-    width: 8,
-    height: 8,
-    borderRadius: 4,
-    backgroundColor: '#007AFF',
-    marginLeft: 8,
-  }
+  card: { backgroundColor: '#FFF', borderRadius: 17, borderWidth: 1, borderColor: Colors.border, padding: 17, marginBottom: 12 },
+  top: { flexDirection: 'row', alignItems: 'center', gap: 12, minHeight: 48 }, icon: { padding: 12, borderRadius: 14 },
+  meta: { flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap', gap: 8, marginBottom: 6 }, badge: { fontSize: 10, fontWeight: '700', paddingHorizontal: 8, paddingVertical: 4, borderRadius: 6 }, unread: { color: Colors.primary, fontSize: 9, fontWeight: '800', letterSpacing: 1 },
+  title: { color: Colors.text, fontSize: 14, fontWeight: '700', lineHeight: 20 }, time: { color: Colors.textSecondary, fontSize: 11, marginTop: 5 }, body: { color: Colors.textSecondary, fontSize: 13, lineHeight: 21, marginTop: 13 },
+  scoreRow: { flexDirection: 'row', alignItems: 'center', gap: 10, marginTop: 15 }, scoreLabel: { color: Colors.textSecondary, fontSize: 11 }, track: { flex: 1, height: 6, borderRadius: 4, backgroundColor: Colors.background, overflow: 'hidden' }, score: { fontSize: 13, fontWeight: '800' },
+  details: { borderTopWidth: 1, borderTopColor: Colors.border, marginTop: 14, paddingTop: 10 }, actions: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginTop: 12 },
 });
-
-export default NotificationItem;

@@ -46,7 +46,7 @@ const BusDetailsModal = ({ visible, bus, onClose }) => {
               <Text style={styles.sectionTitle}>Bus Turns Today</Text>
               {bus.turns && bus.turns.map((turn, index) => (
                 <View key={index} style={styles.turnRow}>
-                  <Ionicons name="time-outline" size={20} color="#007AFF" />
+                  <Ionicons name="time-outline" size={20} color="#176B60" />
                   <Text style={styles.turnText}>Turn {index + 1}: {turn}</Text>
                 </View>
               ))}
@@ -107,7 +107,7 @@ const styles = StyleSheet.create({
   headerTitle: {
     fontSize: 20,
     fontWeight: '700',
-    color: '#1C1C1E',
+    color: '#172D3B',
   },
   closeButton: {
     padding: 4,
@@ -121,7 +121,7 @@ const styles = StyleSheet.create({
   busNumber: {
     fontSize: 28,
     fontWeight: '800',
-    color: '#007AFF',
+    color: '#176B60',
   },
   routeText: {
     fontSize: 18,
@@ -138,7 +138,7 @@ const styles = StyleSheet.create({
   },
   infoLabel: {
     fontSize: 12,
-    color: '#8E8E93',
+    color: '#617381',
     textTransform: 'uppercase',
     letterSpacing: 1,
     marginBottom: 4,
@@ -146,7 +146,7 @@ const styles = StyleSheet.create({
   infoValue: {
     fontSize: 16,
     fontWeight: '600',
-    color: '#1C1C1E',
+    color: '#172D3B',
   },
   divider: {
     height: 1,
@@ -156,24 +156,24 @@ const styles = StyleSheet.create({
   sectionTitle: {
     fontSize: 16,
     fontWeight: '700',
-    color: '#1C1C1E',
+    color: '#172D3B',
     marginBottom: 16,
   },
   turnRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: '#F2F2F7',
+    backgroundColor: '#F0F4F5',
     padding: 12,
     borderRadius: 12,
     marginBottom: 8,
   },
   turnText: {
     fontSize: 15,
-    color: '#1C1C1E',
+    color: '#172D3B',
     marginLeft: 12,
   },
   doneButton: {
-    backgroundColor: '#007AFF',
+    backgroundColor: '#176B60',
     height: 56,
     borderRadius: 16,
     justifyContent: 'center',

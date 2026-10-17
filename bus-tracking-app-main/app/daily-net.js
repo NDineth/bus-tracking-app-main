@@ -1,16 +1,21 @@
+import { SafeAreaView } from 'react-native-safe-area-context';
 import React, { useEffect, useState, useCallback } from 'react';
-import { View, Text, StyleSheet, FlatList, TouchableOpacity, ActivityIndicator, SafeAreaView, StatusBar } from 'react-native';
+import { View, Text, StyleSheet, FlatList, TouchableOpacity, ActivityIndicator, StatusBar } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { getDailyNetSummary } from '../services/busService';
 import Colors from '../constants/Colors';
 import { showError } from '../utils/alertService';
+import { ErrorNotice } from '../components/UI';
+import { colomboDate } from '../utils/date';
+import { errorMessage } from '../services/api';
 
 export default function DailyNetScreen() {
   const { busId, busNumber } = useLocalSearchParams();
   const [summary, setSummary] = useState(null);
   const [selectedDate, setSelectedDate] = useState(new Date());
   const [isLoading, setIsLoading] = useState(true);
+  const [error, setError] = useState(null);
   const router = useRouter();
 
   const fetchSummary = useCallback(async () => {
@@ -20,11 +25,13 @@ export default function DailyNetScreen() {
     }
     setIsLoading(true);
     try {
-      const dateStr = selectedDate.toISOString().split('T')[0];
+      const dateStr = colomboDate(selectedDate);
       const data = await getDailyNetSummary(busId, dateStr);
       setSummary(data);
+      setError(null);
     } catch (error) {
-      showError('Daily Net Summary', error);
+      setSummary(null);
+      setError(errorMessage(error));
     } finally {
       setIsLoading(false);
     }
@@ -54,7 +61,7 @@ export default function DailyNetScreen() {
       <View style={styles.runCard}>
         <View style={styles.runHeader}>
           <View style={styles.runTimeContainer}>
-            <Ionicons name="time-outline" size={16} color="#8E8E93" />
+            <Ionicons name="time-outline" size={16} color="#617381" />
             <Text style={styles.runTimeText}>{item.departureTime} - {item.arrivalTime}</Text>
           </View>
           {item.isOffPeak && (
@@ -129,31 +136,32 @@ export default function DailyNetScreen() {
           showsVerticalScrollIndicator={false}
           ListHeaderComponent={
             <View style={styles.summaryContainer}>
+              <ErrorNotice message={error} onRetry={fetchSummary} />
               {/* Gross Permit Fees */}
               <View style={styles.summaryRow}>
                 <View style={styles.summaryLabelGroup}>
                   <View style={[styles.dot, { backgroundColor: Colors.primary }]} />
                   <Text style={styles.summaryLabel}>Total Permit Fees</Text>
                 </View>
-                <Text style={styles.summaryValue}>LKR {summary ? Number(summary.totalPermitFees).toFixed(2) : '0.00'}</Text>
+                <Text style={styles.summaryValue}>{error ? 'Unavailable' : `LKR ${Number(summary?.totalPermitFees || 0).toFixed(2)}`}</Text>
               </View>
 
               {/* Discount Deducted */}
               <View style={styles.summaryRow}>
                 <View style={styles.summaryLabelGroup}>
-                  <View style={[styles.dot, { backgroundColor: '#FF9500' }]} />
+                  <View style={[styles.dot, { backgroundColor: '#9A650A' }]} />
                   <Text style={styles.summaryLabel}>Total Off-Peak Discount</Text>
                 </View>
-                <Text style={[styles.summaryValue, { color: '#FF9500' }]}>- LKR {summary ? Number(summary.totalCommissions).toFixed(2) : '0.00'}</Text>
+                <Text style={[styles.summaryValue, { color: '#9A650A' }]}>- LKR {summary ? Number(summary.totalCommissions).toFixed(2) : '0.00'}</Text>
               </View>
 
               {/* Delay Fines */}
               <View style={styles.summaryRow}>
                 <View style={styles.summaryLabelGroup}>
-                  <View style={[styles.dot, { backgroundColor: '#FF3B30' }]} />
+                  <View style={[styles.dot, { backgroundColor: '#BD3347' }]} />
                   <Text style={styles.summaryLabel}>Total Delay Fines</Text>
                 </View>
-                <Text style={[styles.summaryValue, { color: '#FF3B30' }]}>+ LKR {summary ? Number(summary.totalFines || 0).toFixed(2) : '0.00'}</Text>
+                <Text style={[styles.summaryValue, { color: '#BD3347' }]}>+ LKR {summary ? Number(summary.totalFines || 0).toFixed(2) : '0.00'}</Text>
               </View>
 
               <View style={styles.divider} />
@@ -161,7 +169,7 @@ export default function DailyNetScreen() {
               {/* Net Fee Payable */}
               <View style={[styles.summaryRow, { marginTop: 8 }]}>
                 <Text style={styles.netRevenueLabel}>Net Payable to Authority</Text>
-                <Text style={styles.netRevenueValue}>LKR {summary ? Number(summary.dailyNetRevenue).toFixed(2) : '0.00'}</Text>
+                <Text style={styles.netRevenueValue}>{error ? 'Unavailable' : `LKR ${Number(summary?.dailyNetRevenue || 0).toFixed(2)}`}</Text>
               </View>
             </View>
           }
@@ -180,7 +188,7 @@ export default function DailyNetScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#F8F9FB',
+    backgroundColor: '#F4F6F8',
   },
   header: {
     flexDirection: 'row',
@@ -195,7 +203,7 @@ const styles = StyleSheet.create({
   backButton: {
     padding: 8,
     borderRadius: 12,
-    backgroundColor: '#F2F2F7',
+    backgroundColor: '#F0F4F5',
   },
   refreshButton: {
     padding: 8,
@@ -203,6 +211,8 @@ const styles = StyleSheet.create({
     backgroundColor: Colors.primary + '10',
   },
   headerTitleContainer: {
+    flex: 1,
+    paddingHorizontal: 12,
     alignItems: 'center',
   },
   headerTitle: {
@@ -212,7 +222,7 @@ const styles = StyleSheet.create({
   },
   headerSubtitle: {
     fontSize: 12,
-    color: '#8E8E93',
+    color: '#617381',
     marginTop: 2,
   },
   datePickerContainer: {
@@ -228,12 +238,12 @@ const styles = StyleSheet.create({
   arrowButton: {
     padding: 8,
     borderRadius: 8,
-    backgroundColor: '#F2F2F7',
+    backgroundColor: '#F0F4F5',
   },
   dateLabel: {
     fontSize: 15,
     fontWeight: '700',
-    color: '#1C1C1E',
+    color: '#172D3B',
   },
   summaryContainer: {
     backgroundColor: '#FFF',
@@ -248,6 +258,8 @@ const styles = StyleSheet.create({
   },
   summaryRow: {
     flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
     justifyContent: 'space-between',
     alignItems: 'center',
     paddingVertical: 8,
@@ -264,23 +276,23 @@ const styles = StyleSheet.create({
   },
   summaryLabel: {
     fontSize: 14,
-    color: '#8E8E93',
+    color: '#617381',
     fontWeight: '500',
   },
   summaryValue: {
     fontSize: 14,
     fontWeight: '600',
-    color: '#1C1C1E',
+    color: '#172D3B',
   },
   divider: {
     height: 1,
-    backgroundColor: '#F2F2F7',
+    backgroundColor: '#F0F4F5',
     marginVertical: 12,
   },
   netRevenueLabel: {
     fontSize: 16,
     fontWeight: '700',
-    color: '#1C1C1E',
+    color: '#172D3B',
   },
   netRevenueValue: {
     fontSize: 18,
@@ -288,6 +300,9 @@ const styles = StyleSheet.create({
     color: Colors.primary,
   },
   listContent: {
+    width: '100%',
+    maxWidth: 1000,
+    alignSelf: 'center',
     paddingHorizontal: 16,
     paddingBottom: 30,
   },
@@ -315,28 +330,28 @@ const styles = StyleSheet.create({
   runTimeText: {
     fontSize: 13,
     fontWeight: '600',
-    color: '#8E8E93',
+    color: '#617381',
     marginLeft: 6,
   },
   offPeakBadge: {
-    backgroundColor: '#FF950015',
+    backgroundColor: '#9A650A15',
     paddingHorizontal: 6,
     paddingVertical: 3,
     borderRadius: 4,
   },
   offPeakText: {
-    color: '#FF9500',
+    color: '#9A650A',
     fontSize: 9,
     fontWeight: '700',
   },
   runRoute: {
     fontSize: 15,
     fontWeight: '700',
-    color: '#1C1C1E',
+    color: '#172D3B',
     marginBottom: 10,
   },
   runBreakdown: {
-    backgroundColor: '#F8F9FB',
+    backgroundColor: '#F4F6F8',
     borderRadius: 8,
     padding: 8,
   },
@@ -347,30 +362,30 @@ const styles = StyleSheet.create({
   },
   breakdownLabel: {
     fontSize: 12,
-    color: '#8E8E93',
+    color: '#617381',
   },
   breakdownValue: {
     fontSize: 12,
     fontWeight: '600',
-    color: '#1C1C1E',
+    color: '#172D3B',
   },
   breakdownLabelCommission: {
     fontSize: 12,
-    color: '#FF9500',
+    color: '#9A650A',
   },
   breakdownValueCommission: {
     fontSize: 12,
     fontWeight: '600',
-    color: '#FF9500',
+    color: '#9A650A',
   },
   breakdownLabelFine: {
     fontSize: 12,
-    color: '#FF3B30',
+    color: '#BD3347',
   },
   breakdownValueFine: {
     fontSize: 12,
     fontWeight: '600',
-    color: '#FF3B30',
+    color: '#BD3347',
   },
   loaderContainer: {
     flex: 1,
@@ -381,7 +396,7 @@ const styles = StyleSheet.create({
   loadingText: {
     marginTop: 12,
     fontSize: 16,
-    color: '#8E8E93',
+    color: '#617381',
   },
   emptyContainer: {
     marginTop: 60,
@@ -391,7 +406,7 @@ const styles = StyleSheet.create({
   emptyText: {
     marginTop: 16,
     fontSize: 15,
-    color: '#8E8E93',
+    color: '#617381',
     textAlign: 'center',
     paddingHorizontal: 40,
   }

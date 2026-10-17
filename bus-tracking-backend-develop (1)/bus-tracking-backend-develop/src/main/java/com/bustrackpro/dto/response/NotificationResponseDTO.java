@@ -22,4 +22,6 @@ public class NotificationResponseDTO {
 
     @JsonProperty("isRead")
     private boolean isRead;
+    private Integer safetyScore;
+    private String severity;
 }

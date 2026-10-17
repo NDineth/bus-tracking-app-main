@@ -1,12 +1,4 @@
-import axios from 'axios';
-import Config from '../constants/Config';
-
-const API = axios.create({
-  baseURL: Config.API_BASE_URL,
-  headers: {
-    'Content-Type': 'application/json',
-  },
-});
+import API from './api';
 
 export const loginUser = async (email, password) => {
   try {

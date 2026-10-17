@@ -18,6 +18,12 @@ import java.util.Map;
 @RestControllerAdvice
 public class GlobalExceptionHandler {
 
+    @ExceptionHandler(org.springframework.security.access.AccessDeniedException.class)
+    public ResponseEntity<Map<String, Object>> handleAccessDenied(org.springframework.security.access.AccessDeniedException ex) {
+        return ResponseEntity.status(HttpStatus.FORBIDDEN).body(Map.of(
+                "message", "You do not have permission to perform this action", "status", 403));
+    }
+
     @ExceptionHandler(RouteNotFoundException.class)
     public ResponseEntity<Map<String, Object>> handleRouteNotFoundException(RouteNotFoundException ex) {
         Map<String, Object> body = new HashMap<>();
@@ -44,7 +50,7 @@ public class GlobalExceptionHandler {
 
         Map<String, String> errors = new HashMap<>();
         ex.getBindingResult().getAllErrors().forEach((error) -> {
-            String fieldName = ((FieldError) error).getField();
+            String fieldName = error instanceof FieldError ? ((FieldError) error).getField() : error.getObjectName();
             String errorMessage = error.getDefaultMessage();
             errors.put(fieldName, errorMessage);
         });

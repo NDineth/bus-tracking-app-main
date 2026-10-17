@@ -1,5 +1,5 @@
 import React, { createContext, useState, useContext, useEffect } from 'react';
-import * as SecureStore from 'expo-secure-store';
+import * as SecureStore from '../utils/storage';
 import { loginUser, registerUser } from '../services/authService';
 import { showError } from '../utils/alertService';
 
@@ -16,7 +16,8 @@ export const AuthProvider = ({ children }) => {
     const loadStoredAuth = async () => {
       try {
         const storedUser = await SecureStore.getItemAsync('user');
-        if (storedUser) {
+        const storedToken = await SecureStore.getItemAsync('token');
+        if (storedUser && storedToken) {
           setUser(JSON.parse(storedUser));
         }
       } catch (e) {
@@ -35,7 +36,7 @@ export const AuthProvider = ({ children }) => {
       const token = data.accessToken || data.token;
       const userObj = {
         id: data.userId,
-        name: data.user,
+        name: typeof data.user === 'string' ? data.user : [data.user?.firstName, data.user?.lastName].filter(Boolean).join(' '),
         role: data.role,
         ...(typeof data.user === 'object' ? data.user : {})
       };

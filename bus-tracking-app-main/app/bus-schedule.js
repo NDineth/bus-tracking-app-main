@@ -1,24 +1,33 @@
+import { showAlert } from '../utils/alertService';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import React, { useEffect, useState } from 'react';
-import { View, Text, StyleSheet, FlatList, TouchableOpacity, ActivityIndicator, SafeAreaView, StatusBar, Alert } from 'react-native';
+import { View, Text, StyleSheet, FlatList, TouchableOpacity, ActivityIndicator, StatusBar } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { getRouteSchedule, completeAssignment } from '../services/busService';
 import Colors from '../constants/Colors';
 import { showError } from '../utils/alertService';
+import { useAuth } from '../context/AuthContext';
+import { ErrorNotice, Metric, ui } from '../components/UI';
+import { errorMessage } from '../services/api';
 
 
 export default function BusScheduleScreen() {
   const { busId, busNumber, route } = useLocalSearchParams();
   const [schedule, setSchedule] = useState([]);
   const [isLoading, setIsLoading] = useState(true);
+  const [error, setError] = useState(null);
+  const [completing, setCompleting] = useState(null);
+  const { user } = useAuth();
   const router = useRouter();
 
   const fetchSchedule = async () => {
     try {
       const data = await getRouteSchedule(route, busNumber);
       setSchedule(data);
+      setError(null);
     } catch (error) {
-      showError('Schedule', 'Failed to fetch schedule');
+      setError(errorMessage(error));
     } finally {
       setIsLoading(false);
     }
@@ -29,9 +38,11 @@ export default function BusScheduleScreen() {
   }, [route, busNumber]);
 
   const handleCompleteRun = async (assignmentId) => {
+    if (completing) return;
+    setCompleting(assignmentId);
     try {
       const data = await completeAssignment(assignmentId);
-      Alert.alert(
+      showAlert(
         'Run Completed Successfully',
         `Permit Fee: LKR ${data.permitFee ? Number(data.permitFee).toFixed(2) : '0.00'}\n` +
         `Off-Peak Commission: LKR ${data.offPeakCommission ? Number(data.offPeakCommission).toFixed(2) : '0.00'}\n` +
@@ -42,6 +53,8 @@ export default function BusScheduleScreen() {
       await fetchSchedule();
     } catch (error) {
       showError('Complete Run', error);
+    } finally {
+      setCompleting(null);
     }
   };
 
@@ -52,7 +65,7 @@ export default function BusScheduleScreen() {
 
     return (
       <View style={[
-        styles.turnCard, 
+        styles.turnCard,
         isYourTurn && styles.highlightedCard,
         isPast && styles.pastCard
       ]}>
@@ -64,26 +77,26 @@ export default function BusScheduleScreen() {
 
           <View style={styles.detailsContainer}>
             <View style={styles.busInfo}>
-              <Ionicons 
-                name="bus" 
-                size={18} 
-                color={isYourTurn ? Colors.primary : (isPast ? '#8E8E93' : '#1C1C1E')} 
+              <Ionicons
+                name="bus"
+                size={18}
+                color={isYourTurn ? Colors.primary : (isPast ? '#617381' : '#172D3B')}
               />
               <Text style={[
-                styles.busNumber, 
+                styles.busNumber,
                 isYourTurn && styles.highlightedBusText,
                 isPast && styles.pastText
               ]}>
                 {item.bus}
               </Text>
             </View>
-            
+
             {isYourTurn && (
               <View style={styles.yourTurnBadge}>
                 <Text style={styles.yourTurnText}>YOUR TURN</Text>
               </View>
             )}
-            
+
             {isCurrent && !isYourTurn && (
               <View style={styles.currentBadge}>
                 <Text style={styles.currentText}>ON ROAD</Text>
@@ -113,13 +126,14 @@ export default function BusScheduleScreen() {
           </View>
         )}
 
-        {isYourTurn && !isPast && (
-          <TouchableOpacity 
+        {isYourTurn && isCurrent && user?.role === 'BUS_DRIVER' && (
+          <TouchableOpacity
             style={styles.completeRunButton}
             onPress={() => handleCompleteRun(item.id)}
+            disabled={completing !== null}
           >
             <Ionicons name="checkmark-circle-outline" size={18} color="#FFF" />
-            <Text style={styles.completeRunButtonText}>Complete Run</Text>
+            <Text style={styles.completeRunButtonText}>{completing === item.id ? 'Completing…' : 'Complete Run'}</Text>
           </TouchableOpacity>
         )}
 
@@ -142,11 +156,11 @@ export default function BusScheduleScreen() {
           <Text style={styles.headerTitle}>Running Schedule</Text>
           <Text style={styles.headerSubtitle}>{route || 'Route Schedule'}</Text>
         </View>
-        <TouchableOpacity 
+        <TouchableOpacity
           onPress={() => router.push({
             pathname: '/bus-agenda',
             params: { busNumber }
-          })} 
+          })}
           style={styles.agendaButton}
         >
           <Ionicons name="calendar" size={24} color={Colors.primary} />
@@ -172,6 +186,9 @@ export default function BusScheduleScreen() {
           renderItem={renderItem}
           keyExtractor={(item) => item.turn.toString()}
           contentContainerStyle={styles.listContent}
+          refreshing={isLoading}
+          onRefresh={fetchSchedule}
+          ListHeaderComponent={<View style={{ gap: 12, marginBottom: 18 }}><ErrorNotice message={error} onRetry={fetchSchedule} /><View style={ui.metrics}><Metric label="Your turns" value={schedule.filter(s => s.isYourTurn).length} icon="bus-outline" /><Metric label="Completed" value={schedule.filter(s => s.isYourTurn && s.rawStatus === 'COMPLETED').length} icon="checkmark-circle-outline" /><Metric label="Upcoming" value={schedule.filter(s => s.isYourTurn && s.status === 'UPCOMING').length} icon="time-outline" /></View></View>}
           showsVerticalScrollIndicator={false}
           ListEmptyComponent={
             <View style={styles.emptyContainer}>
@@ -188,7 +205,7 @@ export default function BusScheduleScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#F8F9FB',
+    backgroundColor: '#F4F6F8',
   },
   header: {
     flexDirection: 'row',
@@ -203,7 +220,7 @@ const styles = StyleSheet.create({
   backButton: {
     padding: 8,
     borderRadius: 12,
-    backgroundColor: '#F2F2F7',
+    backgroundColor: '#F0F4F5',
   },
   agendaButton: {
     padding: 8,
@@ -211,6 +228,8 @@ const styles = StyleSheet.create({
     backgroundColor: Colors.primary + '10',
   },
   headerTitleContainer: {
+    flex: 1,
+    paddingHorizontal: 12,
     alignItems: 'center',
   },
   headerTitle: {
@@ -220,7 +239,7 @@ const styles = StyleSheet.create({
   },
   headerSubtitle: {
     fontSize: 12,
-    color: '#8E8E93',
+    color: '#617381',
     marginTop: 2,
   },
   busSelectionHeader: {
@@ -249,9 +268,12 @@ const styles = StyleSheet.create({
   dayLabel: {
     fontSize: 14,
     fontWeight: '600',
-    color: '#8E8E93',
+    color: '#617381',
   },
   listContent: {
+    width: '100%',
+    maxWidth: 1000,
+    alignSelf: 'center',
     paddingHorizontal: 16,
     paddingBottom: 30,
   },
@@ -274,7 +296,7 @@ const styles = StyleSheet.create({
     marginTop: 12,
     paddingTop: 12,
     borderTopWidth: 1,
-    borderTopColor: '#F2F2F7',
+    borderTopColor: '#F0F4F5',
   },
   feeRow: {
     flexDirection: 'row',
@@ -283,28 +305,28 @@ const styles = StyleSheet.create({
   },
   feeLabel: {
     fontSize: 13,
-    color: '#8E8E93',
+    color: '#617381',
   },
   feeValue: {
     fontSize: 13,
     fontWeight: '700',
-    color: '#1C1C1E',
+    color: '#172D3B',
   },
   commissionLabel: {
     fontSize: 13,
-    color: '#FF9500',
+    color: '#9A650A',
   },
   commissionValue: {
     fontSize: 13,
     fontWeight: '700',
-    color: '#FF9500',
+    color: '#9A650A',
   },
   completeRunButton: {
     marginTop: 12,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: '#34C759',
+    backgroundColor: '#176B60',
     paddingVertical: 10,
     borderRadius: 10,
   },
@@ -323,7 +345,7 @@ const styles = StyleSheet.create({
   },
   pastCard: {
     opacity: 0.6,
-    backgroundColor: '#F2F2F7',
+    backgroundColor: '#F0F4F5',
   },
   timeContainer: {
     width: 90,
@@ -333,14 +355,14 @@ const styles = StyleSheet.create({
   },
   turnNumber: {
     fontSize: 12,
-    color: '#8E8E93',
+    color: '#617381',
     fontWeight: '600',
     marginBottom: 2,
   },
   timeText: {
     fontSize: 16,
     fontWeight: '700',
-    color: '#1C1C1E',
+    color: '#172D3B',
   },
   detailsContainer: {
     flex: 1,
@@ -355,7 +377,7 @@ const styles = StyleSheet.create({
   busNumber: {
     fontSize: 15,
     fontWeight: '600',
-    color: '#1C1C1E',
+    color: '#172D3B',
     marginLeft: 8,
   },
   highlightedBusText: {
@@ -363,7 +385,7 @@ const styles = StyleSheet.create({
     fontWeight: '700',
   },
   pastText: {
-    color: '#8E8E93',
+    color: '#617381',
   },
   yourTurnBadge: {
     backgroundColor: Colors.primary,
@@ -377,24 +399,24 @@ const styles = StyleSheet.create({
     fontWeight: '800',
   },
   currentBadge: {
-    backgroundColor: '#34C75920',
+    backgroundColor: '#176B6020',
     paddingHorizontal: 8,
     paddingVertical: 4,
     borderRadius: 6,
   },
   currentText: {
-    color: '#34C759',
+    color: '#176B60',
     fontSize: 10,
     fontWeight: '800',
   },
   turnLossBadge: {
-    backgroundColor: '#FF3B3015',
+    backgroundColor: '#BD334715',
     paddingHorizontal: 8,
     paddingVertical: 4,
     borderRadius: 6,
   },
   turnLossText: {
-    color: '#FF3B30',
+    color: '#BD3347',
     fontSize: 10,
     fontWeight: '800',
   },
@@ -406,7 +428,7 @@ const styles = StyleSheet.create({
     width: 8,
     height: 8,
     borderRadius: 4,
-    backgroundColor: '#34C759',
+    backgroundColor: '#176B60',
     marginRight: 12,
   },
   loaderContainer: {
@@ -417,7 +439,7 @@ const styles = StyleSheet.create({
   loadingText: {
     marginTop: 12,
     fontSize: 16,
-    color: '#8E8E93',
+    color: '#617381',
   },
   emptyContainer: {
     marginTop: 100,
@@ -427,7 +449,7 @@ const styles = StyleSheet.create({
   emptyText: {
     marginTop: 16,
     fontSize: 16,
-    color: '#8E8E93',
+    color: '#617381',
     textAlign: 'center',
     paddingHorizontal: 40,
   }
