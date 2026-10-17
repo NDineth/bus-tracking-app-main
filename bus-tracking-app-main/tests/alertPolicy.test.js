@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { DEFAULT_POLICY, EVENT_POLICY_FIELDS, POLICY_FIELDS, createPolicyDraft, policyHasChanges, scoreSeverity, safetyScore, alertSeverity, validatePolicy, validateScorePolicy, notificationId, isUnread, sortNotifications } from '../utils/alertPolicy.js';
+import { DEFAULT_POLICY, EVENT_POLICY_FIELDS, POLICY_FIELDS, createPolicyDraft, policyHasChanges, scoreSeverity, safetyScore, alertSeverity, alertType, validatePolicy, validateScorePolicy, notificationId, isUnread, sortNotifications } from '../utils/alertPolicy.js';
 
 const configuredPolicy = { ...DEFAULT_POLICY, highSpeedEvents: 6, brakingEvents: 4, accelerationEvents: 5, turningEvents: 7 };
 
@@ -24,6 +24,13 @@ test('legacy notifications parse scores without inventing missing scores', () =>
 });
 test('server-recorded severity survives later policy changes', () => {
   assert.equal(alertSeverity({ safetyScore: 65, severity: 'CAUTION' }), 'CAUTION');
+});
+test('alert cards show the event type without bus or request details', () => {
+  assert.equal(alertType({ title: 'Driving Safety Alert: Bus QA-1001' }), 'Driving Safety Alert');
+  assert.equal(alertType({ title: 'Driving Alert: SUDDEN_BRAKING' }), 'SUDDEN BRAKING');
+  assert.equal(alertType({ title: 'Schedule Adjustment: delay (Bus QA-1001)' }), 'Schedule Adjustment');
+  assert.equal(alertType({ title: 'New Approval Request - Bus QA-1001' }), 'Approval Request');
+  assert.equal(alertType({ title: 'Task Completed' }), 'Task Completed');
 });
 test('policy validation rejects malformed and unordered thresholds', () => {
   assert.equal(validatePolicy(configuredPolicy), null);

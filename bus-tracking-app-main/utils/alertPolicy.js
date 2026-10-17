@@ -14,6 +14,14 @@ export const SEVERITIES = {
 };
 export const notificationId = (notification) => notification.notificationId ?? notification.id;
 export const isUnread = (notification) => !(notification.isRead ?? notification.read ?? false);
+export function alertType(notification) {
+  const title = typeof notification.title === 'string' ? notification.title.trim() : '';
+  if (/^Driving Safety Alert:\s*Bus\b/i.test(title)) return 'Driving Safety Alert';
+  if (/^Driving Alert:\s*/i.test(title)) return title.replace(/^Driving Alert:\s*/i, '').replace(/_/g, ' ') || 'Driving Alert';
+  if (/^Schedule Adjustment:/i.test(title)) return 'Schedule Adjustment';
+  if (/^(?:New )?Approval Request\b/i.test(title)) return 'Approval Request';
+  return title || 'Notification';
+}
 export function safetyScore(notification) {
   const raw = notification.safetyScore ?? notification.body?.match(/Safety Score:\s*(\d+(?:\.\d+)?)\s*\/\s*100/i)?.[1];
   if (raw === undefined || raw === null || raw === '') return null;

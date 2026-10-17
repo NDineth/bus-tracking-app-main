@@ -164,7 +164,7 @@ export default function HomeScreen() {
         </View>
         <View><SectionTitle title="Recent activity" subtitle={lastUpdated ? `Last synced ${lastUpdated.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}` : 'Latest notifications'} action="View all" onPress={() => router.push('/(tabs)/alerts')} />
           <ErrorNotice message={notificationError} onRetry={refreshNotifications} />
-          {notifications.length ? notifications.slice(0, 3).map(n => <NotificationItem key={n.notificationId ?? n.id} notification={n} onRead={markNotificationRead} compact />) : <EmptyState icon="notifications-outline" title="No recent activity" description="Safety alerts and request updates will appear here." />}</View>
+          {notifications.length ? notifications.slice(0, 3).map(n => <NotificationItem key={n.notificationId ?? n.id} notification={n} onRead={markNotificationRead} />) : <EmptyState icon="notifications-outline" title="No recent activity" description="Safety alerts and request updates will appear here." />}</View>
       </View>
     </View>
   </ScrollView>;

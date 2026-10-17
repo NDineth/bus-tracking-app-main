@@ -17,7 +17,7 @@ test('the severity messages match the requested braking guidance', () => {
 test('missing, invalid and positive readings do not invent braking severity', () => {
   for (const x of [undefined, null, '', ' ', true, NaN, Infinity, 'not a reading', 3]) assert.equal(classifyBraking(x), null);
 });
-test('notifications with a raw X show severity text without numbers in their preview', () => {
+test('braking details classify raw X without mixing it with event counts', () => {
   const details = getBrakingDetails({ title: 'Driving Safety Alert', brakingValueX: -4.25,
     body: 'Harsh Braking: 11\nSafety Score: 45 / 100' });
   assert.equal(details.level.label, 'Harsh');
