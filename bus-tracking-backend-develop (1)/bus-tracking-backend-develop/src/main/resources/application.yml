@@ -1,0 +1,53 @@
+logging:
+  level:
+    org.springframework:
+      web: DEBUG
+      security: DEBUG
+    org.hibernate:
+      SQL: DEBUG
+      orm.jdbc.bind: TRACE
+
+spring:
+  security:
+    csrf:
+      enabled: false
+
+  jackson:
+    date-format: "yyyy-MM-dd"
+  jpa:
+    properties:
+      hibernate:
+        dialect: org.hibernate.dialect.PostgreSQLDialect
+        enable_lazy_load_no_trans: true
+        show_sql: true
+        format_sql: true
+  #        generate_statistics: true
+    hibernate:
+      ddl-auto: update
+  datasource:
+    url: jdbc:postgresql://bustrackpro.postgres.database.azure.com:5432/postgres?sslmode=require
+    username: busProAdmin
+    password: dbData123
+    driver-class-name: org.postgresql.Driver
+
+server:
+  servlet:
+    context-path: /api
+  error:
+    include-message: always
+    include-binding-errors: always
+    include-stacktrace: ON_PARAM
+    include-exception: true
+
+app:
+  jwtSecret: 926D96C90030DD58429D2751AC1BDBBC123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890
+  jwtExpirationInMs: 86400000
+admin:
+  username: admin@bustracking.lk
+  password: adminpassword
+
+azure:
+  iot:
+    hub:
+      connection-string: "Endpoint=sb://ihsuprodpnres005dednamespace.servicebus.windows.net/;SharedAccessKeyName=iothubowner;SharedAccessKey=6A304LKyo00npZmZ+IhW6TC2vU0vOK3s/AIoTDH/vmw=;EntityPath=iothub-ehub-bustrackpr-56188732-f642f2542a"
+      event-hub-name: "iothub-ehub-bustrackpr-56188732-f642f2542a"
