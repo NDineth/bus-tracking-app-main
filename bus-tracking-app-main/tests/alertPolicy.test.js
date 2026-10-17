@@ -1,6 +1,8 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { DEFAULT_POLICY, scoreSeverity, safetyScore, alertSeverity, validatePolicy, notificationId, isUnread, sortNotifications } from '../utils/alertPolicy.js';
+import { DEFAULT_POLICY, EVENT_POLICY_FIELDS, POLICY_FIELDS, createPolicyDraft, policyHasChanges, scoreSeverity, safetyScore, alertSeverity, validatePolicy, validateScorePolicy, notificationId, isUnread, sortNotifications } from '../utils/alertPolicy.js';
+
+const configuredPolicy = { ...DEFAULT_POLICY, highSpeedEvents: 6, brakingEvents: 4, accelerationEvents: 5, turningEvents: 7 };
 
 test('score boundaries put equality in the safer band', () => {
   for (const [score, expected] of [[0, 'CRITICAL'], [39, 'CRITICAL'], [40, 'HIGH'], [69, 'HIGH'], [70, 'CAUTION'], [89, 'CAUTION'], [90, 'LOW'], [100, 'LOW']])
@@ -24,11 +26,30 @@ test('server-recorded severity survives later policy changes', () => {
   assert.equal(alertSeverity({ safetyScore: 65, severity: 'CAUTION' }), 'CAUTION');
 });
 test('policy validation rejects malformed and unordered thresholds', () => {
-  assert.equal(validatePolicy(DEFAULT_POLICY), null);
+  assert.equal(validatePolicy(configuredPolicy), null);
   for (const patch of [{ criticalBelow: 70 }, { highRiskBelow: 90 }, { cautionBelow: 101 }, { criticalBelow: 0 },
     { highSpeedEvents: 0 }, { brakingEvents: 101 }, { accelerationEvents: '2.5' }, { turningEvents: '' }, { cautionBelow: 'NaN' }])
-    assert.ok(validatePolicy({ ...DEFAULT_POLICY, ...patch }), JSON.stringify(patch));
-  assert.equal(validatePolicy({ ...DEFAULT_POLICY, criticalBelow: '40' }), null);
+    assert.ok(validatePolicy({ ...configuredPolicy, ...patch }), JSON.stringify(patch));
+  assert.equal(validatePolicy({ ...configuredPolicy, criticalBelow: '40' }), null);
+});
+
+test('event thresholds have no numeric frontend fallback', () => {
+  const draft = createPolicyDraft(DEFAULT_POLICY);
+  for (const key of EVENT_POLICY_FIELDS) {
+    assert.equal(DEFAULT_POLICY[key], undefined);
+    assert.equal(draft[key], '');
+    assert.equal(createPolicyDraft({ ...DEFAULT_POLICY, [key]: null })[key], '');
+  }
+  assert.equal(validateScorePolicy(draft), null);
+  assert.ok(validatePolicy(draft));
+});
+test('configured event thresholds are loaded unchanged and event-only edits are detected', () => {
+  const draft = createPolicyDraft(configuredPolicy);
+  for (const key of EVENT_POLICY_FIELDS) assert.equal(draft[key], configuredPolicy[key]);
+  assert.equal(policyHasChanges(draft, configuredPolicy), false);
+  assert.equal(policyHasChanges({ ...draft, brakingEvents: '8' }, configuredPolicy), true);
+  assert.equal(policyHasChanges({ ...draft, brakingEvents: '4' }, configuredPolicy), false);
+  assert.equal(POLICY_FIELDS.length, 7);
 });
 test('notification operations use notification ID rather than recipient ID', () => {
   assert.equal(notificationId({ id: 98, notificationId: 7 }), 7);

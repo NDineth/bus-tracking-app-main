@@ -1,6 +1,6 @@
 import React, { createContext, useCallback, useContext, useEffect, useRef, useState } from 'react';
 import { useAuth } from './AuthContext';
-import { DEFAULT_POLICY, validatePolicy } from '../utils/alertPolicy';
+import { DEFAULT_POLICY, POLICY_FIELDS, validatePolicy } from '../utils/alertPolicy';
 import { getAlertPolicy, saveAlertPolicy } from '../services/alertPolicyService';
 import { errorMessage } from '../services/api';
 
@@ -33,7 +33,7 @@ export function AlertPolicyProvider({ children }) {
     const validation = validatePolicy(draft);
     if (validation) throw new Error(validation);
     const ownerId = user?.id;
-    const data = await saveAlertPolicy(Object.fromEntries(Object.keys(DEFAULT_POLICY).map(key => [key, Number(draft[key])])));
+    const data = await saveAlertPolicy(Object.fromEntries(POLICY_FIELDS.map(key => [key, Number(draft[key])])));
     if (identity.current === ownerId) { setPolicy(data); setLoaded(true); setError(null); }
   };
   return <Context.Provider value={{ policy, loading, error, loaded, refreshPolicy, savePolicy }}>{children}</Context.Provider>;

@@ -30,6 +30,18 @@ Schedules and request history include summary counts. Data failures are shown wi
 
 ## Safety score policy
 
+Braking notifications show severity text and guidance in the preview. Tap a notification to expand a scrollable details area with its numeric X value, event count (when provided), safety score and other event data. Braking severity is independent of the overall alert/safety-score severity.
+
+| Braking X | Braking severity |
+| --- | --- |
+| `-2 < X <= 0` | Safe |
+| `-3.5 < X <= -2` | Moderate |
+| `-5 < X <= -3.5` | Harsh |
+| `-7 <= X <= -5` | Severe |
+| `X < -7` | Critical |
+
+Shared boundaries enter the stronger band, except -7 remains Severe because Critical is strictly below -7. The frontend can read explicit `brakingValueX`, `brakingX`, `accelerationX`, `acceleration.x` or `x` fields on a braking notification, or an explicitly labeled X value in its message. Older notifications that supply only a harsh-braking count cannot be classified by X: the preview says severity is unavailable, and expanded details show the count and mark X as not provided. The backend has not been changed to add readings.
+
 Higher scores mean safer driving. The default bands are:
 
 | Score | Severity |
@@ -51,7 +63,7 @@ score = max(0, 100 - 5 × harshBrakingReadings
 
 Scored notifications are generated below the caution boundary. Logs are retained even when no scored notification is sent. A displayed score describes the latest scored notification, not a trip average, a current driver rating or a fleet-wide score.
 
-Behavior count warnings are separate: high speed defaults to 3 events; braking, acceleration and turning default to 2 each. Administrators can set each count from 1 to 100. Crash detection always triggers an immediate critical warning. Existing event counters remain per-backend-process memory: they start a new counting cycle after a warning, reset on restart, and are not shared across server replicas.
+Behavior count warnings are separate. The frontend loads high speed, braking, acceleration and turning counts from the saved fleet policy without numeric fallback values. Missing or unavailable counts display as empty fields. Administrators can set each count from 1 to 100; all counts are required before saving. Resetting score thresholds leaves event counts unchanged. Crash detection always triggers an immediate critical warning. Existing event counters remain per-backend-process memory: they start a new counting cycle after a warning, reset on restart, and are not shared across server replicas.
 
 Policy changes affect future events. New notifications store their score and severity so historical classifications remain stable. Older notifications without these fields use the score in their message and the currently loaded policy as a compatibility fallback. If policy loading fails, the app explicitly labels default/last-loaded values.
 

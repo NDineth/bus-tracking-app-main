@@ -1,5 +1,9 @@
-export const DEFAULT_POLICY = Object.freeze({ criticalBelow: 40, highRiskBelow: 70,
-  cautionBelow: 90, highSpeedEvents: 3, brakingEvents: 2, accelerationEvents: 2, turningEvents: 2 });
+// Score bands have a display fallback; driving event counts must come from the server.
+export const DEFAULT_POLICY = Object.freeze({ criticalBelow: 40, highRiskBelow: 70, cautionBelow: 90 });
+export const EVENT_POLICY_FIELDS = Object.freeze(['highSpeedEvents', 'brakingEvents', 'accelerationEvents', 'turningEvents']);
+export const POLICY_FIELDS = Object.freeze([...Object.keys(DEFAULT_POLICY), ...EVENT_POLICY_FIELDS]);
+export const createPolicyDraft = (policy = {}) => Object.fromEntries(POLICY_FIELDS.map(key => [key, policy[key] ?? '']));
+export const policyHasChanges = (draft, policy) => POLICY_FIELDS.some(key => String(draft[key] ?? '') !== String(policy[key] ?? ''));
 
 export const SEVERITIES = {
   CRITICAL: { label: 'Critical', color: '#BD3347', background: '#FCECEF', icon: 'alert-circle-outline' },
@@ -33,14 +37,21 @@ export function alertSeverity(notification, policy = DEFAULT_POLICY) {
   if (/driving alert|violation alert/i.test(text)) return 'HIGH';
   return 'INFO';
 }
-export function validatePolicy(policy) {
+export function validateScorePolicy(policy) {
   for (const key of Object.keys(DEFAULT_POLICY)) {
-    if (String(policy[key]).trim() === '' || !Number.isInteger(Number(policy[key]))) return 'Enter a whole number for every field.';
+    if (policy[key] == null || String(policy[key]).trim() === '' || !Number.isInteger(Number(policy[key]))) return 'Enter a whole number for every score threshold.';
   }
   const { criticalBelow: c, highRiskBelow: h, cautionBelow: w } = Object.fromEntries(
     Object.entries(policy).map(([key, value]) => [key, Number(value)]));
   if (!(0 < c && c < h && h < w && w <= 100)) return 'Score thresholds must increase: 0 < critical < high risk < caution <= 100.';
-  if (['highSpeedEvents', 'brakingEvents', 'accelerationEvents', 'turningEvents'].some(key => Number(policy[key]) < 1 || Number(policy[key]) > 100))
+  return null;
+}
+export function validatePolicy(policy) {
+  const scoreError = validateScorePolicy(policy);
+  if (scoreError) return scoreError;
+  if (EVENT_POLICY_FIELDS.some(key => policy[key] == null || String(policy[key]).trim() === '' || !Number.isInteger(Number(policy[key]))))
+    return 'Enter a whole number for every driving event threshold.';
+  if (EVENT_POLICY_FIELDS.some(key => Number(policy[key]) < 1 || Number(policy[key]) > 100))
     return 'Event thresholds must be between 1 and 100.';
   return null;
 }
