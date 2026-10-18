@@ -1,45 +1,47 @@
-# Alert details and full-turn driving graphs
+# Turn selection and driving metrics fixes
 
-Based on `ui-enhancement` at `189a7b597f23efd936f591b593cb5611c58242f3`.
+Based on `ui-enhancement` commit `773aadc696991c6ef402434d7e0df3b63a00835b`.
 
-## Changes
+## Problems fixed
 
-- Expanded driving alerts display high-speed event count, sudden braking count, dangerous turns, safety score and driver rating. Instructions and aggressive acceleration text are removed from the expanded view. Missing values display “Not provided”; old alerts do not contain high-speed counts.
-- Tap the assigned bus header on the driver home screen to open bus details. Fleet users can tap the bus header or “Details & graphs”. The existing bus modal also links to graphs.
-- Bus details show registration, route, driver, capacity, status and schedule access.
-- Select an assignment from the last 30 days. The active turn is selected first, otherwise the latest turn. Graphs use the entire assignment-specific GPS history, without the bus endpoint's recent-100 limit.
-- Active-turn graphs refresh every 30 seconds. Pull down or use Refresh to reload bus details and the turn list.
+The expanded alert had a Dangerous acceleration row but the parser did not return its value, producing `undefined events`. The committed backend also omitted the acceleration metrics expected by the graphs, and behavior warnings did not include their triggering event count.
+
+- A visible **Select turn** control opens a searchable list with daily turn numbers, dates, departure times, routes and statuses. The active turn is initially selected, otherwise the latest available turn. Cancelled and lost turns are excluded.
+- Every graph uses the complete GPS history for the selected schedule assignment. Both bus and assignment identifiers are checked. Invalid timestamps are discarded. Switching turns hides previous-turn readings immediately; stale HTTP responses cannot replace the current selection.
+- Dangerous acceleration is read from the existing `Aggressive Acceleration` notification text, its dangerous/sudden aliases, or structured count fields. Missing values remain unknown and zero remains zero.
+- The backend GPS responses now return sudden braking, dangerous acceleration, dangerous turns and safety score from persisted acceleration batches. Dangerous acceleration has its own graph.
+- New behavior warnings include the recorded triggering count, including `High Speed: N`. This is the warning cycle count, not a full-turn total. Historical high-speed warnings without a count show “Detected · count unavailable”. Counts are not guessed from the notification title or from acceleration.
+- Expanded driving alerts remain data-only and include all six requested metrics.
 
 ## Graph definitions
 
-Every GPS reading for the selected assignment contributes to one of up to 32 time intervals. Tap a bar for its time and value.
+All readings for the selected turn contribute to up to 32 time intervals.
 
-| Graph | Data shown per interval |
+| Graph | Value per interval |
 | --- | --- |
-| High speed | Maximum recorded speed in km/h. No overspeed limit is inferred; none is configured in this project. |
-| Sudden braking | Sum of acceleration readings where X < -3.0. |
-| Dangerous turns | Sum of acceleration readings where absolute Y > 2.5. |
-| Safety score | Lowest sensor-batch safety score in the interval. |
+| High speed | Peak recorded speed in km/h. This is the speed profile; no overspeed limit is configured in the project. |
+| Sudden braking | Number of acceleration readings with X < -3.0. |
+| Dangerous acceleration | Number of acceleration readings with X > 3.0. |
+| Dangerous turns | Number of acceleration readings with absolute Y > 2.5. |
+| Safety score | Lowest complete sensor-batch safety score. |
 
-Safety scores retain the existing backend formula: `max(0, 100 - 5 × braking - 4 × aggressive acceleration - 3 × dangerous turns)`. Aggressive acceleration uses X > 3.0 and remains part of the existing score calculation. The summary average is the mean of available scored batches, not a new trip-wide scoring formula.
+Safety uses the existing backend formula: `max(0, 100 - 5 × braking - 4 × acceleration - 3 × turning)`. The summary average is the mean of available scored batches. Counts describe sensor samples, not deduplicated physical maneuvers. Null and incomplete sensor batches do not become zero events or perfect scores; grey graph intervals indicate incomplete data.
 
-Null or incomplete readings are never presented as zero events or a perfect score. A grey interval indicates missing or incomplete data. These counts represent sensor readings, matching the existing alert calculation; they are not deduplicated physical maneuvers.
+## Apply and run
 
-## Backend integration
+Apply both frontend and backend files. No new dependencies or database migration are needed. Restart the backend, then restart the frontend with `npx expo start -c`.
 
-Deploy the included backend changes together with the frontend. No database schema changes or frontend dependencies are needed.
+Existing API paths are retained:
 
-The existing GPS response now includes nullable `suddenBrakingCount`, `dangerousTurnCount` and `safetyScore`, reconstructed from the stored acceleration samples attached to each GPS log. This also makes historical readings available when their acceleration was retained.
+- `GET /tracking/trips/history?busId={busId}`: available turns, defaulting to the last 30 days.
+- `GET /tracking/schedule-assignment/{assignmentId}/gps-logs`: full turn, without the recent-100 limit.
 
-- `GET /tracking/trips/history?busId={busId}` lists assignments, using the existing default last-30-day range.
-- `GET /tracking/schedule-assignment/{assignmentId}/gps-logs` returns the complete selected turn.
-
-Readings sent without an active assignment cannot be attributed to a turn and do not appear in its graphs. An older backend still supplies speed, but cannot supply the new acceleration metrics; those graphs display no data until the backend is updated.
+GPS responses add nullable `suddenBrakingCount`, `dangerousAccelerationCount`, `dangerousTurnCount` and `safetyScore`. Historical samples can be graphed when their acceleration data was retained. GPS readings without a schedule assignment cannot be attributed to a turn. Updating only the frontend cannot supply metrics omitted by an old backend.
 
 ## Validation
 
-- 39 frontend tests passed, including legacy alert parsing, complete-assignment isolation, 500-reading graph aggregation and missing readings.
-- Web export and Android bundle export passed.
-- 12 backend tests passed: `DrivingMetricsTest`, `DrivingBehaviorServiceImplTest`, `AlertPolicyTest`, `AlertPolicyAuthorizationTest`.
-- Browser smoke check with mocked API responses passed for assigned bus navigation, four charts, a 150-reading turn, switching assignments and instruction-free alert details. No browser runtime errors were observed.
-- A physical device and live bus/sensor backend were not available for end-to-end verification.
+- 43 frontend tests passed, including distinct speed/acceleration values, old and new high-speed warnings, zero/missing values, daily turn labels, complete-assignment isolation, and graph aggregation.
+- 15 backend tests passed, including the actual GPS response mapping for a 150-reading turn, missing acceleration, boundary values, score formula and warning counts.
+- Web and Android bundle exports passed.
+- Mocked browser checks passed for searching/selecting turns, different speed/acceleration values per turn, stale-response isolation, both expanded alert counts and runtime errors.
+- A live sensor/backend session and physical mobile device were not available for end-to-end verification.

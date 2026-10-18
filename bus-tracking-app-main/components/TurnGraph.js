@@ -6,7 +6,7 @@ import { graphBuckets } from '../utils/drivingMetrics';
 
 export const readingTime = value => value ? new Date(value).toLocaleTimeString('en-LK', { hour: '2-digit', minute: '2-digit', second: '2-digit' }) : '—';
 
-export default function TurnGraph({ title, readings, field, unit, color, aggregate = 'max', ceiling }) {
+export default function TurnGraph({ title, readings, field, unit, color, aggregate = 'max', ceiling, description }) {
   const [selected, setSelected] = useState(null);
   const buckets = useMemo(() => {
     return graphBuckets(readings, field, aggregate);
@@ -17,7 +17,7 @@ export default function TurnGraph({ title, readings, field, unit, color, aggrega
   const hasData = readings.some(reading => reading[field] !== null && reading[field] !== undefined);
   return <View style={ui.card}>
     <Text style={ui.sectionTitle}>{title}</Text>
-    <Text style={ui.subtitle}>{unit} · {aggregate === 'sum' ? 'Events per interval' : aggregate === 'min' ? 'Lowest score per interval' : 'Peak speed per interval'}</Text>
+    <Text style={ui.subtitle}>{description || `${unit} · ${aggregate === 'sum' ? 'Events per interval' : aggregate === 'min' ? 'Lowest score per interval' : 'Peak speed per interval'}`}</Text>
     {!hasData ? <Text style={[ui.subtitle, { paddingVertical: 24 }]}>No {title.toLowerCase()} readings recorded for this turn.</Text> : <>
       <View style={styles.chart}>
         <View style={styles.scale}><Text style={styles.tick}>{max}</Text><Text style={styles.tick}>0</Text></View>

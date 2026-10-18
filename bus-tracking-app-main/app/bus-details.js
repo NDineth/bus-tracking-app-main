@@ -9,6 +9,7 @@ import { errorMessage } from '../services/api';
 import { sortTurns, turnReadings } from '../utils/drivingMetrics';
 import { Button, EmptyState, ErrorNotice, Metric, SectionTitle, ui } from '../components/UI';
 import TurnGraph from '../components/TurnGraph';
+import TurnSelector from '../components/TurnSelector';
 import Colors from '../constants/Colors';
 
 const dateTime = value => value ? new Date(value).toLocaleString('en-LK', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' }) : '—';
@@ -19,7 +20,7 @@ export default function BusDetailsScreen() {
   const [bus, setBus] = useState(null);
   const [turns, setTurns] = useState([]);
   const [selectedId, setSelectedId] = useState(null);
-  const [readings, setReadings] = useState([]);
+  const [readingState, setReadingState] = useState({ turnId: null, data: [] });
   const [loading, setLoading] = useState(true);
   const [graphLoading, setGraphLoading] = useState(false);
   const [error, setError] = useState(null);
@@ -28,6 +29,7 @@ export default function BusDetailsScreen() {
   const [graphRevision, setGraphRevision] = useState(0);
   const selected = turns.find(turn => String(turn.id) === String(selectedId));
   const live = ['ACTIVE', 'IN_PROGRESS'].includes(selected?.status);
+  const readings = readingState.turnId === String(selectedId) ? readingState.data : [];
 
   useEffect(() => {
     let cancelled = false;
@@ -38,7 +40,7 @@ export default function BusDetailsScreen() {
       if (!found) throw new Error('This bus is no longer available.');
       const ordered = sortTurns(history, busId);
       setBus(found); setTurns(ordered);
-      setSelectedId(previous => ordered.some(turn => String(turn.id) === String(previous)) ? previous : ordered[0]?.id ?? null);
+      setSelectedId(previous => ordered.some(turn => String(turn.id) === String(previous)) ? String(previous) : ordered[0] ? String(ordered[0].id) : null);
     }).catch(e => { if (!cancelled) setError(errorMessage(e)); })
       .finally(() => { if (!cancelled) setLoading(false); });
     return () => { cancelled = true; };
@@ -46,10 +48,10 @@ export default function BusDetailsScreen() {
 
   useEffect(() => {
     let cancelled = false;
-    setReadings([]); setGraphError(null);
+    setGraphError(null);
     if (!selectedId || !selected) { setGraphLoading(false); return; }
     setGraphLoading(true);
-    getTurnReadings(selectedId).then(logs => { if (!cancelled) setReadings(turnReadings(logs, selectedId)); })
+    getTurnReadings(selectedId).then(logs => { if (!cancelled) setReadingState({ turnId: String(selectedId), data: turnReadings(logs, selectedId, busId) }); })
       .catch(e => { if (!cancelled) setGraphError(errorMessage(e)); })
       .finally(() => { if (!cancelled) setGraphLoading(false); });
     return () => { cancelled = true; };
@@ -79,14 +81,8 @@ export default function BusDetailsScreen() {
           {!!bus.unavailabilityReason && <Text style={ui.subtitle}>{bus.unavailabilityReason}</Text>}
           <Button title="View running schedule" icon="calendar-outline" secondary style={{ marginTop: 14 }} onPress={() => router.push({ pathname: '/bus-schedule', params: { busId: bus.id, busNumber: bus.busNumber, route: bus.route } })} />
         </View>
-        <View><SectionTitle title="Full-turn driving graphs" subtitle="Select a turn from the last 30 days. All recorded readings for that turn are included." />
-          <ScrollView horizontal showsHorizontalScrollIndicator contentContainerStyle={{ gap: 8, paddingBottom: 8 }}>
-            {turns.map(turn => <TouchableOpacity key={turn.id} accessibilityRole="button" accessibilityState={{ selected: turn.id === selectedId }}
-              onPress={() => setSelectedId(turn.id)} style={[ui.chip, { paddingVertical: 12 }, turn.id === selectedId && ui.chipSelected]}>
-              <View><Text style={[ui.chipText, turn.id === selectedId && { color: '#FFF' }]}>{dateTime(turn.startTime)}</Text>
-                <Text style={[ui.subtitle, { fontSize: 11 }, turn.id === selectedId && { color: '#FFF' }]}>{turn.tripLabel} · {turn.status?.replace(/_/g, ' ')}</Text></View>
-            </TouchableOpacity>)}
-          </ScrollView>
+        <View><SectionTitle title="Full-turn driving graphs" subtitle="Choose a turn to view its complete driving history. Turns from the last 30 days are available." />
+          <TurnSelector turns={turns} selectedId={selectedId} onSelect={setSelectedId} />
         </View>
         {!turns.length && <EmptyState icon="analytics-outline" title="No turns recorded" description="Driving graphs will appear when a run is assigned and tracking readings are received." />}
         {selected && <View style={ui.card}><SectionTitle title={selected.tripLabel || 'Selected turn'} subtitle={`${dateTime(selected.startTime)} → ${dateTime(selected.endTime)}`} />
@@ -96,8 +92,9 @@ export default function BusDetailsScreen() {
         {graphLoading ? <ActivityIndicator color={Colors.primary} /> : selected && !graphError && (readings.length ? <>
           <View style={ui.metrics}><Metric label="Peak speed" value={speed.length ? `${Math.max(...speed).toFixed(1)}` : '—'} detail="km/h" icon="speedometer-outline" />
             <Metric label="Average safety score" value={score.length ? `${Math.round(score.reduce((a, b) => a + b, 0) / score.length)}/100` : '—'} detail={`${score.length} scored sensor batches`} icon="shield-checkmark-outline" /></View>
-          <TurnGraph key={`${selectedId}-speed`} title="High speed" readings={readings} field="speed" unit="km/h" color="#B45123" />
+          <TurnGraph key={`${selectedId}-speed`} title="High speed" description="Recorded speed · km/h" readings={readings} field="speed" unit="km/h" color="#B45123" />
           <TurnGraph key={`${selectedId}-braking`} title="Sudden braking" readings={readings} field="suddenBrakingCount" unit="events" aggregate="sum" color="#BD3347" />
+          <TurnGraph key={`${selectedId}-acceleration`} title="Dangerous acceleration" readings={readings} field="dangerousAccelerationCount" unit="events" aggregate="sum" color="#476883" />
           <TurnGraph key={`${selectedId}-turning`} title="Dangerous turns" readings={readings} field="dangerousTurnCount" unit="events" aggregate="sum" color="#94610A" />
           <TurnGraph key={`${selectedId}-score`} title="Safety score" readings={readings} field="safetyScore" unit="/100" aggregate="min" ceiling={100} color={Colors.primary} />
         </> : <EmptyState icon="pulse-outline" title="No readings for this turn" description="This turn has no GPS or acceleration readings yet." />)}

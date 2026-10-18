@@ -1,15 +1,23 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { drivingAlertDetails, sortTurns, turnReadings, graphBuckets } from '../utils/drivingMetrics.js';
+import { drivingAlertDetails, sortTurns, turnReadings, graphBuckets, turnLabel } from '../utils/drivingMetrics.js';
 
 test('legacy alerts show requested metrics without confusing acceleration with speed', () => {
   assert.deepEqual(drivingAlertDetails({ body: 'Harsh Braking: 3\nAggressive Acceleration: 8\nDangerous Turns: 2\nSafety Score: 47 / 100\nDriver Rating: HIGH' }),
-    { highSpeed: null, braking: 3, turning: 2, score: 47, rating: 'HIGH' });
+    { highSpeed: null, braking: 3, acceleration: 8, turning: 2, highSpeedDetected: false, score: 47, rating: 'HIGH' });
 });
 test('explicit zeroes remain zero and missing readings are unavailable', () => {
-  assert.deepEqual(drivingAlertDetails({ highSpeedCount: 0, harshBrakingCount: 0, dangerousTurnCount: 0, safetyScore: 100, driverRating: 'LOW' }),
-    { highSpeed: 0, braking: 0, turning: 0, score: 100, rating: 'LOW' });
+  assert.deepEqual(drivingAlertDetails({ highSpeedCount: 0, harshBrakingCount: 0, dangerousAccelerationCount: 0, dangerousTurnCount: 0, safetyScore: 100, driverRating: 'LOW' }),
+    { highSpeed: 0, braking: 0, acceleration: 0, turning: 0, highSpeedDetected: false, score: 100, rating: 'LOW' });
   assert.equal(drivingAlertDetails({ body: 'Please drive safely' }).score, null);
+});
+test('dangerous acceleration accepts existing backend labels and preserves missing data', () => {
+  assert.equal(drivingAlertDetails({ aggressiveAccelerationCount: 4 }).acceleration, 4);
+  assert.equal(drivingAlertDetails({ body: 'Dangerous Acceleration: 2' }).acceleration, 2);
+  assert.equal(drivingAlertDetails({ body: 'Sudden Acceleration Count: 3' }).acceleration, 3);
+  assert.equal(drivingAlertDetails({ body: 'Aggressive Acceleration: 0' }).acceleration, 0);
+  assert.equal(drivingAlertDetails({}).acceleration, null);
+  assert.equal(drivingAlertDetails({ dangerousAccelerationCount: -1 }).acceleration, null);
 });
 test('turn picker scopes to the selected bus and prioritizes its active turn', () => {
   const turns = [{ id: 1, busId: 9, status: 'COMPLETED', startTime: '2026-10-18' },
@@ -44,4 +52,39 @@ test('graph gaps and partial sensor batches remain missing instead of zero', () 
   assert.equal(result[0].value, null);
   assert.equal(result[1].value, null);
   assert.equal(result[2].value, 0);
+});
+
+test('high speed uses only its own recorded event count, including old count-less warnings', () => {
+  const warning = drivingAlertDetails({ title: 'Driving Alert: HIGH SPEED', body: 'High Speed: 6' });
+  assert.equal(warning.highSpeed, 6);
+  assert.equal(warning.highSpeedDetected, true);
+  assert.equal(warning.acceleration, null);
+  const legacy = drivingAlertDetails({ title: 'Driving Alert: HIGH SPEED', body: 'Bus has exceeded the speed limit.' });
+  assert.equal(legacy.highSpeed, null);
+  assert.equal(legacy.highSpeedDetected, true);
+});
+
+test('turn numbers are chronological per day and IDs compare across string and number types', () => {
+  const turns = sortTurns([
+    { id: 5, busId: 2, status: 'COMPLETED', startTime: '2026-10-18T10:00:00' },
+    { id: 4, busId: '2', status: 'COMPLETED', startTime: '2026-10-18T08:00:00' },
+    { id: 6, busId: 2, status: 'CANCELLED', startTime: '2026-10-18T12:00:00' },
+    { id: 3, busId: 2, status: 'COMPLETED', startTime: '2026-10-17T12:00:00' },
+  ], '2');
+  assert.deepEqual(turns.map(turn => [turn.id, turn.turnNumber]), [[5, 2], [4, 1], [3, 1]]);
+  assert.match(turnLabel(turns[0]), /^Turn 2/);
+});
+
+test('speed, acceleration, and incomplete data remain separate and invalid dates are excluded', () => {
+  const logs = [
+    { scheduleAssignmentId: 7, busId: 12, recordedAt: '2026-10-18T08:00:00', speed: 82.5, dangerousAccelerationCount: 0 },
+    { scheduleAssignmentId: '7', busId: '12', recordedAt: '2026-10-18T08:01:00', speed: -100, dangerousAccelerationCount: 3 },
+    { scheduleAssignmentId: 7, busId: 13, recordedAt: '2026-10-18T08:00:00', speed: 200 },
+    { scheduleAssignmentId: 7, busId: 12, recordedAt: 'broken', speed: 300 },
+  ];
+  const readings = turnReadings(logs, 7, '12');
+  assert.equal(readings.length, 2);
+  assert.deepEqual(readings.map(reading => reading.speed), [82.5, null]);
+  assert.deepEqual(readings.map(reading => reading.dangerousAccelerationCount), [0, 3]);
+  assert.equal(drivingAlertDetails({ dangerousAccelerationCount: true }).acceleration, null);
 });

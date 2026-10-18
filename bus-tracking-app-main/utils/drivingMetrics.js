@@ -1,7 +1,7 @@
 import { safetyScore } from './alertPolicy.js';
 
 const numeric = value => {
-  if (value == null || String(value).trim() === '') return null;
+  if (!['number', 'string'].includes(typeof value) || String(value).trim() === '') return null;
   const result = Number(value);
   return Number.isFinite(result) && result >= 0 ? result : null;
 };
@@ -17,7 +17,9 @@ export function drivingAlertDetails(notification) {
   return {
     highSpeed: count(['highSpeedCount', 'highSpeedEvents'], /(?:High Speed|Overspeeding)(?: Events| Count)?\s*[:=]\s*(\d+(?:\.\d+)?)/i),
     braking: count(['harshBrakingCount', 'suddenBrakingCount'], /(?:Harsh|Sudden) Braking(?: Count)?\s*[:=]\s*(\d+(?:\.\d+)?)/i),
+    acceleration: count(['dangerousAccelerationCount', 'aggressiveAccelerationCount', 'suddenAccelerationCount'], /(?:Dangerous|Aggressive|Sudden) Acceleration(?: Events| Count)?\s*[:=]\s*(\d+(?:\.\d+)?)/i),
     turning: count(['dangerousTurnCount'], /Dangerous Turns?(?: Count)?\s*[:=]\s*(\d+(?:\.\d+)?)/i),
+    highSpeedDetected: /HIGH[ _-]SPEED/i.test(`${notification.behavior || ''} ${notification.title || ''}`),
     score: safetyScore(notification),
     rating: typeof rating === 'string' && rating.trim() ? rating.trim().replace(/_/g, ' ') : null,
   };
@@ -25,15 +27,31 @@ export function drivingAlertDetails(notification) {
 
 export function sortTurns(turns, busId) {
   const rank = status => ['ACTIVE', 'IN_PROGRESS'].includes(status) ? 0 : 1;
-  return turns.filter(turn => String(turn.busId) === String(busId))
+  const dailyCounts = new Map();
+  return turns.filter(turn => String(turn.busId) === String(busId) && !['CANCELLED', 'TURN_LOSS'].includes(turn.status))
+    .sort((a, b) => String(a.startTime || '').localeCompare(String(b.startTime || '')) || String(a.id).localeCompare(String(b.id)))
+    .map(turn => {
+      const day = String(turn.startTime || '').slice(0, 10);
+      const turnNumber = (dailyCounts.get(day) || 0) + 1;
+      dailyCounts.set(day, turnNumber);
+      return { ...turn, turnNumber };
+    })
     .sort((a, b) => rank(a.status) - rank(b.status) || String(b.startTime || '').localeCompare(String(a.startTime || '')));
 }
 
+export function turnLabel(turn) {
+  const date = new Date(turn.startTime);
+  const time = Number.isNaN(date.getTime()) ? 'Time unavailable' : date.toLocaleString('en-LK', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' });
+  return `Turn ${turn.turnNumber || turn.id} · ${time}`;
+}
+
 // Keep every reading, including nulls (missing data is not a zero).
-export function turnReadings(logs, assignmentId) {
-  return logs.filter(log => String(log.scheduleAssignmentId) === String(assignmentId))
+export function turnReadings(logs, assignmentId, busId) {
+  return logs.filter(log => log && String(log.scheduleAssignmentId) === String(assignmentId)
+      && (busId == null || String(log.busId) === String(busId)) && Number.isFinite(Date.parse(log.recordedAt)))
     .sort((a, b) => String(a.recordedAt || '').localeCompare(String(b.recordedAt || '')))
     .map(log => ({ ...log, speed: numeric(log.speed), suddenBrakingCount: numeric(log.suddenBrakingCount),
+      dangerousAccelerationCount: numeric(log.dangerousAccelerationCount ?? log.aggressiveAccelerationCount),
       dangerousTurnCount: numeric(log.dangerousTurnCount), safetyScore: numeric(log.safetyScore) }));
 }
 

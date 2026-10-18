@@ -46,7 +46,7 @@ export default function NotificationItem({ notification, onRead }) {
       <Text style={styles.time}>{time}</Text>
       {driving ? <View style={styles.metricList}>
         {[
-          ['High speed', metrics.highSpeed === null ? 'Not provided' : `${metrics.highSpeed} events`],
+          ['High speed', metrics.highSpeed === null ? (metrics.highSpeedDetected ? 'Detected · count unavailable' : 'Not provided') : `${metrics.highSpeed} events`],
           ['Sudden braking', metrics.braking === null ? 'Not provided' : `${metrics.braking} events`],
           ['Dangerous acceleration', metrics.acceleration === null ? 'Not provided' : `${metrics.acceleration} events`],
           ['Dangerous turns', metrics.turning === null ? 'Not provided' : `${metrics.turning} events`],
