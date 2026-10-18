@@ -124,6 +124,7 @@ const BusCard = ({ bus, isDriving, onToggleDriving, isLoading }) => {
 
   return (
     <View style={styles.container}>
+      <TouchableOpacity accessibilityRole="button" accessibilityLabel={`Open bus details and driving graphs for ${bus.busNumber}`} onPress={() => router.push({ pathname: '/bus-details', params: { busId: bus.id || bus.busId, busNumber: bus.busNumber } })}>
       <LinearGradient
         colors={isDriving ? ['#176B60', '#125548'] : ['#142D3E', '#244B56']}
         style={styles.cardHeader}
@@ -133,9 +134,11 @@ const BusCard = ({ bus, isDriving, onToggleDriving, isLoading }) => {
         <View>
           <Text style={styles.busNumber}>{bus.busNumber || bus.number || 'N/A'}</Text>
           <Text style={styles.routeText}>{displayRoute}</Text>
+          <Text style={{ color: '#D5EAE2', fontSize: 12, marginTop: 10 }}>Bus details & driving graphs →</Text>
         </View>
         <Ionicons name="bus-outline" size={40} color="rgba(255, 255, 255, 0.3)" style={styles.bgIcon} />
       </LinearGradient>
+      </TouchableOpacity>
 
       <View style={styles.cardBody}>
         <ErrorNotice message={scheduleError} onRetry={() => setRefreshKey(key => key + 1)} />

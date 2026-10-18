@@ -40,6 +40,9 @@ const BusDetailsModal = ({ visible, bus, onClose }) => {
               </View>
             </View>
 
+            <TouchableOpacity accessibilityRole="button" style={styles.fullScheduleButton} onPress={() => {
+              onClose(); router.push({ pathname: '/bus-details', params: { busId: bus.id || bus.busId, busNumber: bus.busNumber } });
+            }}><Ionicons name="analytics-outline" size={20} color={Colors.primary} /><Text style={styles.fullScheduleButtonText}>View full-turn driving graphs</Text></TouchableOpacity>
             <View style={styles.divider} />
 
             <View style={styles.section}>
